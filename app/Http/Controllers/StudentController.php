@@ -6,7 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Classroom;
 use App\Models\Student;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class StudentController extends Controller
 {
@@ -30,6 +35,108 @@ class StudentController extends Controller
             'students' => $students,
             'classrooms' => $classrooms
         ]);
+    }
+
+    public function downloadTemplate()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Data Siswa');
+        $sheet->fromArray([
+            ['NISN', 'Nama', 'Jenis Kelamin (L/P)', 'Kelas', 'Password (opsional)'],
+            ['CONTOH - HAPUS', 'Nama Siswa', 'L', 'Nama kelas sesuai aplikasi', ''],
+        ]);
+        $sheet->getStyle('A:A')->getNumberFormat()->setFormatCode('@');
+        $sheet->setCellValue('G1', 'Password kosong akan menggunakan NISN. Isi NISN sebagai teks agar angka nol di depan tidak hilang.');
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            (new Xlsx($spreadsheet))->save('php://output');
+        }, 'template-data-siswa.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:10240'],
+        ]);
+
+        try {
+            $rows = IOFactory::load($request->file('file')->getRealPath())
+                ->getActiveSheet()->toArray(null, true, true, true);
+        } catch (\Throwable $exception) {
+            throw ValidationException::withMessages(['file' => 'File Excel tidak dapat dibaca. Gunakan template data siswa.']);
+        }
+
+        $classrooms = Classroom::all()->keyBy(fn ($classroom) => mb_strtolower(trim($classroom->title)));
+        $students = [];
+        $errors = [];
+        $seenNisn = [];
+
+        foreach (array_slice($rows, 1, null, true) as $rowNumber => $row) {
+            $nisn = trim((string) ($row['A'] ?? ''));
+            $name = trim((string) ($row['B'] ?? ''));
+            $genderInput = mb_strtolower(trim((string) ($row['C'] ?? '')));
+            $classroomName = mb_strtolower(trim((string) ($row['D'] ?? '')));
+            $password = trim((string) ($row['E'] ?? ''));
+
+            if ($nisn === '' && $name === '' && $classroomName === '') continue;
+            if (str_starts_with(mb_strtolower($nisn), 'contoh')) continue;
+
+            $rowErrors = [];
+            if (!preg_match('/^\d{1,19}$/', $nisn)) $rowErrors[] = 'NISN wajib berupa angka (maksimal 19 digit).';
+            if ($name === '' || mb_strlen($name) > 255) $rowErrors[] = 'Nama wajib diisi dan maksimal 255 karakter.';
+
+            $gender = match ($genderInput) {
+                'l', 'laki-laki', 'laki laki' => 'L',
+                'p', 'perempuan' => 'P',
+                default => null,
+            };
+            if (!$gender) $rowErrors[] = 'Jenis kelamin harus L atau P.';
+
+            $classroom = $classrooms->get($classroomName);
+            if (!$classroom) $rowErrors[] = 'Nama kelas tidak ditemukan.';
+
+            if (isset($seenNisn[$nisn])) {
+                $rowErrors[] = 'NISN duplikat di dalam file.';
+            } elseif ($nisn !== '') {
+                $seenNisn[$nisn] = true;
+            }
+
+            if ($rowErrors) {
+                $errors[] = 'Baris ' . $rowNumber . ': ' . implode(' ', $rowErrors);
+                continue;
+            }
+
+            $students[] = [
+                'nisn' => $nisn,
+                'name' => $name,
+                'gender' => $gender,
+                'classroom_id' => $classroom->id,
+                'password' => $password !== '' ? $password : $nisn,
+            ];
+        }
+
+        if ($students) {
+            $existingNisn = Student::withTrashed()->whereIn('nisn', array_column($students, 'nisn'))->pluck('nisn')->map(fn ($nisn) => (string) $nisn)->all();
+            if ($existingNisn) {
+                $errors[] = 'NISN sudah terdaftar: ' . implode(', ', $existingNisn) . '.';
+            }
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages(['file' => implode(' ', $errors)]);
+        }
+        if (!$students) {
+            throw ValidationException::withMessages(['file' => 'Tidak ada data siswa untuk diimpor.']);
+        }
+
+        DB::transaction(function () use ($students) {
+            foreach ($students as $student) Student::create($student);
+        });
+
+        return back()->with('success', count($students) . ' data siswa berhasil diimpor.');
     }
 
     /**

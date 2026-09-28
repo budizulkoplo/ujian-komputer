@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Answer;
+use App\Models\AppSetting;
 use App\Models\ExamGroup;
 use App\Models\Grade;
 use App\Models\Question;
@@ -12,8 +13,6 @@ use Inertia\Inertia;
 
 class ExaminationController extends Controller
 {
-    private const CHEAT_LIMIT = 3;
-
     public function index()
     {
         $student = auth()->guard('student')->user()->loadMissing('classroom');
@@ -76,31 +75,33 @@ class ExaminationController extends Controller
             return redirect()->route('student.dashboard')->with('error', 'Ujian ini tidak dapat dilanjutkan.');
         }
         $grade->start_time ??= Carbon::now();
+        $grade->expires_at ??= Carbon::now()->addMilliseconds(max(0, (int) $grade->duration));
         $grade->save();
 
-        $questions = $examGroup->exam->random_question === 'Y'
-            ? Question::where('exam_id', $examGroup->exam->id)->inRandomOrder()->get()
-            : Question::where('exam_id', $examGroup->exam->id)
-                ->orderByRaw('COALESCE(sort_order, id) ASC')
-                ->orderBy('id', 'ASC')
-                ->get();
+        $questions = Question::where('exam_id', $examGroup->exam->id)
+            ->orderByRaw('COALESCE(sort_order, id) ASC')
+            ->orderBy('id', 'ASC')
+            ->get();
 
         foreach ($questions as $order => $question) {
-            $options = collect(range(1, 5))
-                ->filter(fn ($number) => filled($question->{"option_{$number}"}))
-                ->values()->all();
-            if ($examGroup->exam->random_answer === 'Y' && $question->type !== 'ordering') shuffle($options);
-
-            Answer::updateOrCreate([
+            $answer = Answer::firstOrNew([
                 'student_id' => auth()->guard('student')->user()->id,
                 'exam_id' => $examGroup->exam->id,
                 'exam_session_id' => $examGroup->exam_session->id,
                 'question_id' => $question->id,
-            ], [
-                'question_order' => $order + 1,
-                'answer_order' => implode(',', $options),
-                'answer' => 0,
             ]);
+
+            $answer->question_order = $order + 1;
+            if (!$answer->exists) {
+                $options = collect(range(1, 5))
+                    ->filter(fn ($number) => filled($question->{"option_{$number}"}))
+                    ->values()->all();
+                if ($examGroup->exam->random_answer === 'Y' && $question->type !== 'ordering') shuffle($options);
+
+                $answer->answer_order = implode(',', $options);
+                $answer->answer = 0;
+            }
+            $answer->save();
         }
 
         return redirect()->route('student.examination.show', ['id' => $examGroup->id, 'page' => 1]);
@@ -121,6 +122,10 @@ class ExaminationController extends Controller
         if ($duration->is_locked || $duration->end_time) {
             return redirect()->route('student.dashboard')->with('error', 'Ujian ini sudah dikunci atau selesai.');
         }
+        $duration->start_time ??= Carbon::now();
+        $duration->expires_at ??= Carbon::now()->addMilliseconds(max(0, (int) $duration->duration));
+        $duration->duration = $this->remainingDuration($duration);
+        $duration->save();
 
         return Inertia::render('Student/Exams/Show', [
             'id' => (int) $id,
@@ -152,24 +157,30 @@ class ExaminationController extends Controller
             ->where('student_id', $studentId)
             ->firstOrFail();
 
+        $limit = max(1, (int) (AppSetting::first()?->cheat_limit ?? 3));
         if ($grade->end_time || $grade->is_locked) {
             return response()->json([
                 'locked' => (bool) $grade->is_locked,
                 'cheat_count' => (int) $grade->cheat_count,
-                'limit' => self::CHEAT_LIMIT,
+                'limit' => $limit,
             ]);
         }
 
+        $remaining = $this->remainingDuration($grade);
         $grade->increment('cheat_count');
         $grade->refresh();
-        if ($grade->cheat_count >= self::CHEAT_LIMIT) {
-            $grade->update(['is_locked' => true]);
+        if ($grade->cheat_count >= $limit) {
+            $grade->update([
+                'is_locked' => true,
+                'duration' => $remaining,
+                'expires_at' => null,
+            ]);
         }
 
         return response()->json([
             'locked' => (bool) $grade->is_locked,
             'cheat_count' => (int) $grade->cheat_count,
-            'limit' => self::CHEAT_LIMIT,
+            'limit' => $limit,
         ]);
     }
 
@@ -178,8 +189,6 @@ class ExaminationController extends Controller
         $grade = Grade::where('exam_id', $request->exam_id)
             ->where('exam_session_id', $request->exam_session_id)
             ->where('student_id', auth()->guard('student')->user()->id)->firstOrFail();
-        $grade->update(['duration' => $request->integer('duration')]);
-
         $question = Question::findOrFail($request->question_id);
         $submitted = $request->input('answer_value', $request->input('answer'));
         $answer = Answer::where('exam_id', $request->exam_id)
@@ -308,6 +317,13 @@ class ExaminationController extends Controller
             'total_correct' => 0,
             'grade' => 0,
         ]);
+    }
+
+    private function remainingDuration(Grade $grade): int
+    {
+        if (!$grade->expires_at) return max(0, (int) $grade->duration);
+
+        return max(0, (int) Carbon::now()->diffInMilliseconds($grade->expires_at, false));
     }
 
     private function isCorrect(Question $question, mixed $submitted): bool

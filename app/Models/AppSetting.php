@@ -11,5 +11,10 @@ class AppSetting extends Model
         'school_logo',
         'school_name',
         'school_address',
+        'cheat_limit',
+    ];
+
+    protected $casts = [
+        'cheat_limit' => 'integer',
     ];
 }

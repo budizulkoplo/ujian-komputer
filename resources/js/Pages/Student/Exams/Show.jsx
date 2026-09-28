@@ -5,7 +5,8 @@ import StudentLayout from '@/Layouts/StudentLayout';
 
 export default function Show({ id, page, exam_group: group, all_questions: allQuestions, question_active: activeAnswer, question_answered: answered, answer_order: answerOrder, duration }) {
     const question = activeAnswer?.question;
-    const [remaining, setRemaining] = useState(duration?.duration || group.exam.duration * 60000);
+    const deadline = duration?.expires_at ? new Date(duration.expires_at).getTime() : null;
+    const [remaining, setRemaining] = useState(deadline ? Math.max(0, deadline - Date.now()) : duration?.duration ?? group.exam.duration * 60000);
     const initialAnswer = parseAnswer(activeAnswer?.answer_value, question?.type);
     const [value, setValue] = useState(initialAnswer);
     const [processing, setProcessing] = useState(false);
@@ -14,13 +15,15 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     const lastViolationAt = useRef(0);
 
     useEffect(() => {
-        const timer = window.setInterval(() => setRemaining((current) => Math.max(0, current - 1000)), 1000);
+        const timer = window.setInterval(() => {
+            if (!locked) setRemaining((current) => deadline ? Math.max(0, deadline - Date.now()) : Math.max(0, current - 1000));
+        }, 1000);
         return () => window.clearInterval(timer);
-    }, []);
+    }, [deadline, locked]);
 
     useEffect(() => {
-        if (remaining <= 0) finishExam();
-    }, [remaining]);
+        if (!locked && remaining <= 0) finishExam();
+    }, [locked, remaining]);
 
     useEffect(() => {
         const reportViolation = async () => {
@@ -77,7 +80,7 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     return <>
         <Head title={`Ujian - ${group.exam.title}`} />
         {violationNotice && !locked ? <div className="fixed inset-x-3 top-3 z-50 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-lg sm:inset-x-auto sm:right-5 sm:w-96"><div className="flex items-start justify-between gap-3"><span>{violationNotice}</span><button type="button" onClick={() => setViolationNotice(null)} className="text-amber-700 hover:text-amber-950">×</button></div></div> : null}
-        {locked ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-5"><div className="w-full max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl"><p className="text-sm font-semibold uppercase tracking-widest text-rose-600">Ujian dikunci</p><h2 className="mt-2 text-2xl font-bold text-slate-900">Batas pelanggaran tercapai</h2><p className="mt-3 text-sm leading-6 text-slate-600">Halaman ujian mendeteksi perpindahan tab atau aplikasi sebanyak 3 kali. Silakan hubungi guru/pengawas untuk pemeriksaan lebih lanjut.</p><Link href={route('student.dashboard')} className="mt-6 inline-flex rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-800">Kembali ke dashboard</Link></div></div> : null}
+        {locked ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-5"><div className="w-full max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl"><p className="text-sm font-semibold uppercase tracking-widest text-rose-600">Ujian dikunci</p><h2 className="mt-2 text-2xl font-bold text-slate-900">Batas pelanggaran tercapai</h2><p className="mt-3 text-sm leading-6 text-slate-600">Batas pelanggaran sesuai kebijakan sekolah telah tercapai. Silakan hubungi guru/pengawas untuk pemeriksaan lebih lanjut.</p><Link href={route('student.dashboard')} className="mt-6 inline-flex rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-800">Kembali ke dashboard</Link></div></div> : null}
         <div className="mx-auto max-w-6xl py-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
                 <div><p className="text-xs font-semibold uppercase tracking-wider text-teal-700">{group.exam.lesson?.title}</p><h1 className="mt-1 font-bold text-slate-900">{group.exam.title}</h1></div>

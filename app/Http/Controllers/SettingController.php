@@ -12,7 +12,7 @@ class SettingController extends Controller
     public function index()
     {
         return Inertia::render('Dashboard/Settings/Index', [
-            'setting' => AppSetting::first() ?? new AppSetting(),
+            'setting' => AppSetting::first() ?? new AppSetting(['cheat_limit' => 3]),
         ]);
     }
 
@@ -22,6 +22,7 @@ class SettingController extends Controller
             'app_name' => ['required', 'string', 'max:255'],
             'school_name' => ['required', 'string', 'max:255'],
             'school_address' => ['required', 'string'],
+            'cheat_limit' => ['required', 'integer', 'min:1', 'max:100'],
             'school_logo' => ['nullable', 'image', 'max:2048'],
         ]);
 

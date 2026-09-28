@@ -12,6 +12,7 @@ export default function Index({ setting }) {
         app_name: setting.app_name || '',
         school_name: setting.school_name || '',
         school_address: setting.school_address || '',
+        cheat_limit: setting.cheat_limit ?? 3,
         school_logo: null,
     });
 
@@ -35,6 +36,9 @@ export default function Index({ setting }) {
                 </div>
                 <div className="mt-4">
                     <Textarea label="Alamat Sekolah" value={data.school_address} onChange={(event) => setData('school_address', event.target.value)} errors={errors.school_address} required />
+                </div>
+                <div className="mt-4 max-w-sm">
+                    <Input label="Batas kecurangan sebelum ujian dikunci" type="number" min="1" max="100" value={data.cheat_limit} onChange={(event) => setData('cheat_limit', event.target.value)} errors={errors.cheat_limit} required />
                 </div>
                 <div className="mt-4 flex flex-col gap-2">
                     <label className="text-gray-600 text-sm">Logo Sekolah</label>

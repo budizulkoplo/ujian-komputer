@@ -7,6 +7,7 @@ use App\Models\Exam;
 use App\Models\ExamGroup;
 use App\Models\ExamSession;
 use App\Models\Grade;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -53,6 +54,7 @@ class MonitoringController extends Controller
                     'end_time' => $grade?->end_time,
                     'grade' => $grade?->grade,
                     'is_locked' => (bool) ($grade?->is_locked ?? false),
+                    'can_unlock' => (bool) ($grade?->is_locked && !$grade?->end_time),
                     'cheat_count' => (int) ($grade?->cheat_count ?? 0),
                     'last_activity' => $grade?->updated_at,
                 ];
@@ -77,6 +79,29 @@ class MonitoringController extends Controller
                 'status' => $request->input('status', 'all'),
             ],
         ]);
+    }
+
+    public function unlock(ExamGroup $examGroup)
+    {
+        abort_unless($this->accessibleExams()->whereKey($examGroup->exam_id)->exists(), 403);
+
+        $grade = Grade::where('exam_id', $examGroup->exam_id)
+            ->where('exam_session_id', $examGroup->exam_session_id)
+            ->where('student_id', $examGroup->student_id)
+            ->where('is_locked', true)
+            ->whereNull('end_time')
+            ->firstOrFail();
+
+        $remaining = $grade->expires_at
+            ? max(0, (int) Carbon::now()->diffInMilliseconds($grade->expires_at, false))
+            : max(0, (int) $grade->duration);
+        $grade->update([
+            'is_locked' => false,
+            'duration' => $remaining,
+            'expires_at' => Carbon::now()->addMilliseconds($remaining),
+        ]);
+
+        return back()->with('success', 'Kunci ujian siswa berhasil dibuka.');
     }
 
     private function status(?Grade $grade): string

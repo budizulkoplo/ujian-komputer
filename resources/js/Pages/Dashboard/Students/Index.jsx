@@ -10,10 +10,12 @@ import { Head, useForm, usePage } from '@inertiajs/react';
 import { IconBox, IconChartBar, IconCirclePlus, IconDatabaseOff, IconPackage, IconPencilCheck, IconPencilCog, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
 import Input from '@/Components/Dashboard/Input';
 import InputSelect from '@/Components/Dashboard/InputSelect';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 export default function Index({ students, classrooms }) {
     const { errors } = usePage().props;
+    const importInput = useRef(null);
+    const { data: importData, setData: setImportData, post: postImport, processing: importing, errors: importErrors, reset: resetImport } = useForm({ file: null });
 
     const gender = [
         { id: 'L', name: 'Laki-laki' },
@@ -97,6 +99,17 @@ export default function Index({ students, classrooms }) {
             }
         })
     }
+
+    const importStudents = (event) => {
+        event.preventDefault();
+        postImport(route('students.import'), {
+            forceFormData: true,
+            onSuccess: () => {
+                resetImport();
+                if (importInput.current) importInput.current.value = '';
+            },
+        });
+    };
     return (
         <>
             <Head title='Pelajar' />
@@ -120,6 +133,17 @@ export default function Index({ students, classrooms }) {
                     </div>
                 </div>
             </div>
+            <div className="mb-2 flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950 md:flex-row md:items-center md:justify-between">
+                <a href={route('students.template')} className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-900">
+                    <IconPackage size={18} /> Unduh Template Excel
+                </a>
+                <form onSubmit={importStudents} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input ref={importInput} type="file" accept=".xlsx,.xls,.csv" required onChange={(event) => setImportData('file', event.target.files?.[0] || null)} className="max-w-full rounded-md border border-gray-200 px-3 py-2 text-sm dark:border-gray-800" />
+                    <Button type="submit" disabled={importing || !importData.file} className="border bg-teal-700 text-white hover:bg-teal-800 disabled:opacity-50" icon={<IconUsers size={18} />} label={importing ? 'Mengimpor...' : 'Upload Siswa'} />
+                </form>
+            </div>
+            <p className="mb-2 text-xs text-gray-500">Jika password dikosongkan, password awal siswa menggunakan NISN. Pastikan NISN di Excel disimpan sebagai teks.</p>
+            {importErrors.file && <p className="mb-4 text-sm text-rose-600">{importErrors.file}</p>}
             <Modal
                 show={data.isOpen}
                 onClose={() =>

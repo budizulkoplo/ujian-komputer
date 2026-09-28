@@ -1,7 +1,8 @@
 import DashboardLayout from '@/Layouts/DashboardLayout';
 import Card from '@/Components/Dashboard/Card';
 import { Head, router, useForm } from '@inertiajs/react';
-import { IconActivity, IconInfoCircle, IconList, IconRefresh, IconUsers } from '@tabler/icons-react';
+import { IconActivity, IconInfoCircle, IconList, IconLockOpen, IconRefresh, IconUsers } from '@tabler/icons-react';
+import { useEffect } from 'react';
 
 const statusLabels = {
     in_progress: 'Sedang ujian',
@@ -31,6 +32,14 @@ export default function Index({ exam_sessions = [], selected_session: session, c
     const count = (status) => participants.filter((participant) => participant.status === status).length;
     const totalCheats = participants.reduce((total, participant) => total + (participant.cheat_count || 0), 0);
 
+    useEffect(() => {
+        const interval = window.setInterval(() => {
+            router.reload({ only: ['participants'], preserveState: true, preserveScroll: true });
+        }, 3000);
+
+        return () => window.clearInterval(interval);
+    }, []);
+
     return <>
         <Head title="Monitoring Peserta" />
         <div className="space-y-6">
@@ -49,7 +58,7 @@ export default function Index({ exam_sessions = [], selected_session: session, c
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6"><Stat label="Total Peserta" value={participants.length} color="blue" /><Stat label="Sedang Ujian" value={count('in_progress')} color="green" /><Stat label="Dikunci" value={count('locked')} color="red" /><Stat label="Selesai" value={count('finished')} color="cyan" /><Stat label="Belum Mulai" value={count('not_started')} color="slate" /><Stat label="Total Kecurangan" value={totalCheats} color="amber" /></div>
 
-            <Card title={<span className="flex items-center gap-2"><IconList size={19} />Daftar Peserta Ujian</span>}><p className="mb-4 text-sm text-slate-500">Total siswa pada tampilan: {participants.length}{session?.exam?.classroom?.title ? ` | Kelas target: ${session.exam.classroom.title}` : ''}</p><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Peserta</th><th className="px-4 py-3">Kelas</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Mulai</th><th className="px-4 py-3">Selesai</th><th className="px-4 py-3">Nilai</th><th className="px-4 py-3">Kecurangan</th></tr></thead><tbody className="divide-y divide-slate-100">{participants.length ? participants.map((participant) => <tr key={participant.id} className="hover:bg-slate-50"><td className="px-4 py-3"><div className="font-semibold text-slate-800">{participant.student?.name}</div><div className="text-xs text-slate-500">NISN {participant.student?.nisn}</div></td><td className="px-4 py-3 text-slate-600">{participant.classroom || '-'}</td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(participant.status)}`}>{statusLabels[participant.status]}</span></td><td className="px-4 py-3 text-slate-600">{formatDate(participant.start_time)}</td><td className="px-4 py-3 text-slate-600">{formatDate(participant.end_time)}</td><td className="px-4 py-3 font-semibold text-slate-800">{participant.grade ?? '-'}</td><td className="px-4 py-3 text-slate-600">{participant.cheat_count || 0}</td></tr>) : <tr><td colSpan="7" className="px-4 py-16 text-center text-slate-500">Belum ada peserta untuk filter ini.</td></tr>}</tbody></table></div></Card>
+            <Card title={<span className="flex items-center gap-2"><IconList size={19} />Daftar Peserta Ujian</span>}><p className="mb-4 text-sm text-slate-500">Total siswa pada tampilan: {participants.length}{session?.exam?.classroom?.title ? ` | Kelas target: ${session.exam.classroom.title}` : ''}</p><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Peserta</th><th className="px-4 py-3">Kelas</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Mulai</th><th className="px-4 py-3">Selesai</th><th className="px-4 py-3">Nilai</th><th className="px-4 py-3">Kecurangan</th><th className="px-4 py-3">Aksi</th></tr></thead><tbody className="divide-y divide-slate-100">{participants.length ? participants.map((participant) => <tr key={participant.id} className="hover:bg-slate-50"><td className="px-4 py-3"><div className="font-semibold text-slate-800">{participant.student?.name}</div><div className="text-xs text-slate-500">NISN {participant.student?.nisn}</div></td><td className="px-4 py-3 text-slate-600">{participant.classroom || '-'}</td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(participant.status)}`}>{statusLabels[participant.status]}</span></td><td className="px-4 py-3 text-slate-600">{formatDate(participant.start_time)}</td><td className="px-4 py-3 text-slate-600">{formatDate(participant.end_time)}</td><td className="px-4 py-3 font-semibold text-slate-800">{participant.grade ?? '-'}</td><td className="px-4 py-3 text-slate-600">{participant.cheat_count || 0}</td><td className="px-4 py-3">{participant.can_unlock ? <button type="button" onClick={() => { if (window.confirm(`Buka kunci ujian untuk ${participant.student?.name}?`)) router.patch(route('monitoring.unlock', participant.id), {}, { preserveScroll: true }); }} className="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200"><IconLockOpen size={15} />Buka kunci</button> : '-'}</td></tr>) : <tr><td colSpan="8" className="px-4 py-16 text-center text-slate-500">Belum ada peserta untuk filter ini.</td></tr>}</tbody></table></div></Card>
         </div>
     </>;
 }

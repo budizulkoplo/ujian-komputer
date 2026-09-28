@@ -66,6 +66,8 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
 
     // Features
     Route::resource('classrooms', ClassroomController::class);
+    Route::get('/students/template', [StudentController::class, 'downloadTemplate'])->name('students.template');
+    Route::post('/students/import', [StudentController::class, 'import'])->name('students.import');
     Route::resource('students', StudentController::class);
     Route::resource('teachers', TeacherController::class)->except(['create', 'edit', 'show']);
     Route::resource('lessons', LessonController::class);
@@ -107,6 +109,7 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
     Route::get('/corrections', [CorrectionController::class, 'index'])->name('corrections.index');
     Route::put('/corrections/{answer}', [CorrectionController::class, 'update'])->name('corrections.update');
     Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring.index');
+    Route::patch('/monitoring/{examGroup}/unlock', [MonitoringController::class, 'unlock'])->name('monitoring.unlock');
 
 });
 

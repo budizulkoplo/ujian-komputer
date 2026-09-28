@@ -21,6 +21,7 @@ class Grade extends Model
         'student_id',
         'duration',
         'start_time',
+        'expires_at',
         'end_time',
         'total_correct',
         'grade',
@@ -31,6 +32,7 @@ class Grade extends Model
     protected $casts = [
         'is_locked' => 'boolean',
         'cheat_count' => 'integer',
+        'expires_at' => 'datetime',
     ];
 
     /**
