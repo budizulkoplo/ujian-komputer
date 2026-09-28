@@ -1,0 +1,208 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Answer;
+use App\Models\ExamGroup;
+use App\Models\Grade;
+use App\Models\Question;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+
+class ExaminationController extends Controller
+{
+    public function index()
+    {
+        $examGroups = ExamGroup::with('exam.lesson', 'exam_session', 'student.classroom')
+            ->where('student_id', auth()->guard('student')->user()->id)->get();
+
+        $data = $examGroups->map(function ($examGroup) {
+            $grade = Grade::firstOrCreate([
+                'exam_id' => $examGroup->exam_id,
+                'exam_session_id' => $examGroup->exam_session_id,
+                'student_id' => auth()->guard('student')->user()->id,
+            ], [
+                'duration' => $examGroup->exam->duration * 60000,
+                'total_correct' => 0,
+                'grade' => 0,
+            ]);
+
+            return ['exam_group' => $examGroup, 'grade' => $grade];
+        })->values();
+
+        return Inertia::render('Student/Dashboard', ['exam_groups' => $data]);
+    }
+
+    public function confirmation($id)
+    {
+        $examGroup = $this->examGroup($id);
+        if (!$examGroup) return redirect()->route('student.dashboard');
+
+        $grade = $this->grade($examGroup);
+        return Inertia::render('Student/Exams/Confirmation', [
+            'exam_group' => $examGroup,
+            'grade' => $grade,
+        ]);
+    }
+
+    public function startExam($id)
+    {
+        $examGroup = $this->examGroup($id);
+        if (!$examGroup) return redirect()->route('student.dashboard');
+
+        $grade = $this->grade($examGroup);
+        $grade->start_time ??= Carbon::now();
+        $grade->save();
+
+        $questions = $examGroup->exam->random_question === 'Y'
+            ? Question::where('exam_id', $examGroup->exam->id)->inRandomOrder()->get()
+            : Question::where('exam_id', $examGroup->exam->id)->get();
+
+        foreach ($questions as $order => $question) {
+            $options = collect(range(1, 5))
+                ->filter(fn ($number) => filled($question->{"option_{$number}"}))
+                ->values()->all();
+            if ($examGroup->exam->random_answer === 'Y' && $question->type !== 'ordering') shuffle($options);
+
+            Answer::updateOrCreate([
+                'student_id' => auth()->guard('student')->user()->id,
+                'exam_id' => $examGroup->exam->id,
+                'exam_session_id' => $examGroup->exam_session->id,
+                'question_id' => $question->id,
+            ], [
+                'question_order' => $order + 1,
+                'answer_order' => implode(',', $options),
+                'answer' => 0,
+            ]);
+        }
+
+        return redirect()->route('student.examination.show', ['id' => $examGroup->id, 'page' => 1]);
+    }
+
+    public function show($id, $page)
+    {
+        $examGroup = $this->examGroup($id);
+        if (!$examGroup) return redirect()->route('student.dashboard');
+
+        $baseAnswers = Answer::with('question')->where('student_id', auth()->guard('student')->user()->id)
+            ->where('exam_id', $examGroup->exam->id);
+        $allQuestions = (clone $baseAnswers)->orderBy('question_order')->get();
+        $answered = (clone $baseAnswers)->where(fn ($query) => $query->where('answer', '!=', 0)->orWhereNotNull('answer_value'))->count();
+        $active = (clone $baseAnswers)->where('question_order', $page)->first();
+        $answerOrder = $active && $active->answer_order ? explode(',', $active->answer_order) : [];
+        $duration = $this->grade($examGroup);
+
+        return Inertia::render('Student/Exams/Show', [
+            'id' => (int) $id,
+            'page' => (int) $page,
+            'exam_group' => $examGroup,
+            'all_questions' => $allQuestions,
+            'question_answered' => $answered,
+            'question_active' => $active,
+            'answer_order' => $answerOrder,
+            'duration' => $duration,
+        ]);
+    }
+
+    public function updateDuration(Request $request, $gradeId)
+    {
+        Grade::findOrFail($gradeId)->update(['duration' => $request->integer('duration')]);
+        return response()->json(['success' => true]);
+    }
+
+    public function answerQuestion(Request $request)
+    {
+        $grade = Grade::where('exam_id', $request->exam_id)
+            ->where('exam_session_id', $request->exam_session_id)
+            ->where('student_id', auth()->guard('student')->user()->id)->firstOrFail();
+        $grade->update(['duration' => $request->integer('duration')]);
+
+        $question = Question::findOrFail($request->question_id);
+        $submitted = $request->input('answer_value', $request->input('answer'));
+        $answer = Answer::where('exam_id', $request->exam_id)
+            ->where('exam_session_id', $request->exam_session_id)
+            ->where('student_id', auth()->guard('student')->user()->id)
+            ->where('question_id', $question->id)->firstOrFail();
+
+        $answer->answer = is_numeric($submitted) ? (int) $submitted : 0;
+        $answer->answer_value = is_array($submitted) ? json_encode(array_values($submitted)) : (string) $submitted;
+        $isCorrect = $this->isCorrect($question, $submitted);
+        $answer->is_correct = $isCorrect ? 'Y' : 'N';
+        $answer->score = $question->type === 'essay' ? 0 : ($isCorrect ? $question->max_score : 0);
+        $answer->save();
+
+        return back();
+    }
+
+    public function endExam(Request $request)
+    {
+        $studentId = auth()->guard('student')->user()->id;
+        $questions = Question::where('exam_id', $request->exam_id)->get();
+        $answers = Answer::with('question')->where('exam_id', $request->exam_id)
+            ->where('exam_session_id', $request->exam_session_id)
+            ->where('student_id', $studentId)->get();
+        $correct = $answers->where('is_correct', 'Y');
+        $totalScore = (float) $questions->sum('max_score');
+        $earnedScore = (float) $answers->sum(fn ($answer) => (float) $answer->score > 0
+            ? (float) $answer->score
+            : ($answer->is_correct === 'Y' ? (float) ($answer->question?->max_score ?? 0) : 0));
+        $gradeValue = $totalScore > 0 ? round($earnedScore / $totalScore * 100, 2) : 0;
+
+        Grade::where('exam_id', $request->exam_id)->where('exam_session_id', $request->exam_session_id)
+            ->where('student_id', $studentId)->update([
+                'end_time' => Carbon::now(),
+                'total_correct' => $correct->count(),
+                'grade' => $gradeValue,
+            ]);
+
+        return redirect()->route('student.examination.resultExam', $request->exam_group_id);
+    }
+
+    public function resultExam($examGroupId)
+    {
+        $examGroup = $this->examGroup($examGroupId);
+        if (!$examGroup) return redirect()->route('student.dashboard');
+
+        return Inertia::render('Student/Exams/Result', [
+            'exam_group' => $examGroup,
+            'grade' => $this->grade($examGroup),
+        ]);
+    }
+
+    private function examGroup($id): ?ExamGroup
+    {
+        return ExamGroup::with('exam.lesson', 'exam_session', 'student.classroom')
+            ->where('student_id', auth()->guard('student')->user()->id)->where('id', $id)->first();
+    }
+
+    private function grade(ExamGroup $examGroup): Grade
+    {
+        return Grade::firstOrCreate([
+            'exam_id' => $examGroup->exam_id,
+            'exam_session_id' => $examGroup->exam_session_id,
+            'student_id' => auth()->guard('student')->user()->id,
+        ], [
+            'duration' => $examGroup->exam->duration * 60000,
+            'total_correct' => 0,
+            'grade' => 0,
+        ]);
+    }
+
+    private function isCorrect(Question $question, mixed $submitted): bool
+    {
+        $key = $question->answer_key;
+        if ($question->type === 'essay' || $key === null) return false;
+        if (in_array($question->type, ['multiple_choice_complex', 'ordering'], true)) {
+            $submitted = is_array($submitted) ? $submitted : json_decode((string) $submitted, true);
+            $submitted = array_map('strval', is_array($submitted) ? $submitted : []);
+            $key = array_map('strval', is_array($key) ? $key : []);
+            if ($question->type === 'multiple_choice_complex') {
+                sort($submitted);
+                sort($key);
+            }
+            return $submitted === $key;
+        }
+        return (string) $submitted === (string) $key;
+    }
+}
