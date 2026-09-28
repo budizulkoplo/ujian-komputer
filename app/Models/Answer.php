@@ -45,4 +45,19 @@ class Answer extends Model
     {
         return $this->belongsTo(Question::class);
     }
+
+    public function student()
+    {
+        return $this->belongsTo(Student::class);
+    }
+
+    public function exam_session()
+    {
+        return $this->belongsTo(ExamSession::class);
+    }
+
+    public function exam()
+    {
+        return $this->belongsTo(Exam::class);
+    }
 }

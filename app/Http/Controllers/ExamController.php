@@ -85,8 +85,8 @@ class ExamController extends Controller
         $exam = Exam::with('lesson', 'classroom')->findOrFail($id);
         $this->ensureExamAccess($exam);
 
-        //get relation questions with pagination
-        $exam->setRelation('questions', $exam->questions()->paginate(5));
+        // Tampilkan 25 soal per halaman agar halaman tetap ringan saat jumlah soal banyak.
+        $exam->setRelation('questions', $exam->questions()->paginate(25));
 
         //render with inertia
         return Inertia::render('Dashboard/Exams/Show', [

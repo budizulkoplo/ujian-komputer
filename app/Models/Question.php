@@ -17,6 +17,7 @@ class Question extends Model
      */
     protected $fillable = [
         'exam_id',
+        'sort_order',
         'question',
         'image',
         'video_url',
@@ -34,6 +35,7 @@ class Question extends Model
     protected $casts = [
         'answer_key' => 'array',
         'max_score' => 'integer',
+        'sort_order' => 'integer',
     ];
 
     /**

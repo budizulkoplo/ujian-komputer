@@ -75,6 +75,9 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
 
     //custom route for create question exam
     Route::get('/exams/{exam}/questions/create', [QuestionController::class, 'create'])->name('exams.questions.create');
+    Route::get('/exams/{exam}/questions/template', [QuestionController::class, 'downloadTemplate'])->name('exams.questions.template');
+    Route::post('/exams/{exam}/questions/import', [QuestionController::class, 'import'])->name('exams.questions.import');
+    Route::post('/questions/editor-image', [QuestionController::class, 'uploadEditorImage'])->name('questions.editor-image');
     //custom route for store question exam
     Route::post('/exams/{exam}/questions/store', [QuestionController::class, 'store'])->name('exams.questions.store');
     //custom route for edit question exam

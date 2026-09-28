@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Head, useForm } from '@inertiajs/react';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
 import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
@@ -18,15 +18,93 @@ const types = [
 
 const emptyOptions = { option_1: '', option_2: '', option_3: '', option_4: '', option_5: '' };
 
+class EditorUploadAdapter {
+    constructor(loader) {
+        this.loader = loader;
+        this.request = null;
+    }
+
+    upload() {
+        return this.loader.file.then((file) => new Promise((resolve, reject) => {
+            const data = new FormData();
+            data.append('upload', file);
+
+            this.request = new XMLHttpRequest();
+            this.request.open('POST', route('questions.editor-image'), true);
+            this.request.responseType = 'json';
+            this.request.withCredentials = true;
+            this.request.setRequestHeader('X-CSRF-TOKEN', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '');
+            this.request.setRequestHeader('Accept', 'application/json');
+
+            this.request.addEventListener('error', () => reject('Gagal mengunggah gambar.'));
+            this.request.addEventListener('abort', () => reject());
+            this.request.addEventListener('load', () => {
+                const response = this.request.response || {};
+                if (this.request.status >= 200 && this.request.status < 300 && response.url) {
+                    resolve({ default: response.url });
+                    return;
+                }
+                reject(response.message || 'Gagal mengunggah gambar.');
+            });
+
+            if (this.request.upload) {
+                this.request.upload.addEventListener('progress', (event) => {
+                    if (event.lengthComputable) this.loader.uploadTotal = event.total;
+                    if (event.lengthComputable) this.loader.uploaded = event.loaded;
+                });
+            }
+
+            this.request.send(data);
+        }));
+    }
+
+    abort() {
+        if (this.request) this.request.abort();
+    }
+}
+
+function editorUploadPlugin(editor) {
+    editor.plugins.get('FileRepository').createUploadAdapter = (loader) => new EditorUploadAdapter(loader);
+}
+
+function imageResizeDataPlugin(editor) {
+    ['imageBlock', 'imageInline'].forEach((imageType) => {
+        if (editor.model.schema.isRegistered(imageType)) {
+            editor.model.schema.extend(imageType, { allowAttributes: ['imageWidth'] });
+
+            const viewElementName = imageType === 'imageBlock' ? 'figure' : 'img';
+            editor.conversion.for('upcast').attributeToAttribute({
+                view: { name: viewElementName, styles: { width: /.+/ } },
+                model: { key: 'imageWidth', value: (viewElement) => viewElement.getStyle('width') },
+            });
+            editor.conversion.for('downcast').attributeToAttribute({
+                model: { name: imageType, key: 'imageWidth' },
+                view: (modelAttributeValue) => ({ key: 'style', value: { width: modelAttributeValue } }),
+            });
+        }
+    });
+}
+
+const editorConfig = {
+    extraPlugins: [editorUploadPlugin, imageResizeDataPlugin],
+    toolbar: [
+        'undo', 'redo', '|', 'heading', '|', 'bold', 'italic', 'link',
+        'uploadImage', 'insertTable', 'blockQuote', '|', 'bulletedList',
+        'numberedList', 'outdent', 'indent',
+    ],
+};
+
 export default function QuestionForm({ exam, question = null }) {
     const initialType = question?.type || 'multiple_choice';
     const initialKey = question?.answer_key ?? (question?.answer ? [String(question.answer)] : []);
     const initialKeyArray = Array.isArray(initialKey) ? initialKey.map(String) : (initialKey ? [String(initialKey)] : []);
     const [orderKey, setOrderKey] = useState(initialKeyArray);
     const [complexKey, setComplexKey] = useState(initialKeyArray);
+    const imageInputRef = useRef(null);
     const { data, setData, post, processing, errors } = useForm({
         question: question?.question || '',
         image: null,
+        remove_image: false,
         video_url: question?.video_url || '',
         type: initialType,
         max_score: question?.max_score || 10,
@@ -77,6 +155,17 @@ export default function QuestionForm({ exam, question = null }) {
         });
     };
 
+    const clearQuestionImage = () => {
+        setData('image', null);
+        setData('remove_image', Boolean(question?.image));
+        if (imageInputRef.current) imageInputRef.current.value = '';
+    };
+
+    const selectQuestionImage = (event) => {
+        setData('image', event.target.files?.[0] || null);
+        setData('remove_image', false);
+    };
+
     return <>
         <Head title={question ? 'Ubah Soal' : 'Tambah Soal'} />
         <Card title={question ? 'Ubah Soal' : 'Tambah Soal'} footer={<Button type="submit" label={processing ? 'Menyimpan...' : 'Simpan'} icon={<IconPencilPlus size={18} />} disabled={processing} className="border bg-teal-700 text-white hover:bg-teal-800" />} form={saveQuestion}>
@@ -96,7 +185,15 @@ export default function QuestionForm({ exam, question = null }) {
             <EditorField label="Pertanyaan" value={data.question} error={errors.question} onChange={(value) => setEditor('question', value)} />
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div><label className="mb-2 block text-sm font-semibold text-slate-700">Gambar</label><input type="file" accept="image/*" onChange={(event) => setData('image', event.target.files?.[0] || null)} className="block w-full rounded-lg border border-slate-300 bg-white text-sm text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-4 file:py-2.5 file:text-sm file:font-semibold" />{question?.image && <p className="mt-2 text-xs text-slate-500">Gambar tersimpan: {question.image.split('/').pop()}</p>}{errors.image && <p className="mt-1 text-xs text-rose-600">{errors.image}</p>}</div>
+                <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">Gambar</label>
+                    <input ref={imageInputRef} type="file" accept="image/*" onChange={selectQuestionImage} className="block w-full rounded-lg border border-slate-300 bg-white text-sm text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-4 file:py-2.5 file:font-semibold" />
+                    {question?.image && !data.remove_image && <p className="mt-2 text-xs text-slate-500">Gambar tersimpan: {question.image.split('/').pop()}</p>}
+                    {data.image && <p className="mt-2 text-xs text-teal-700">File baru: {data.image.name}</p>}
+                    {(data.image || (question?.image && !data.remove_image)) && <button type="button" onClick={clearQuestionImage} className="mt-2 inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100">Hapus gambar</button>}
+                    {data.remove_image && <p className="mt-2 text-xs text-amber-700">Gambar akan dihapus saat disimpan.</p>}
+                    {errors.image && <p className="mt-1 text-xs text-rose-600">{errors.image}</p>}
+                </div>
                 <Input label="Video URL" type="url" placeholder="URL YouTube" value={data.video_url} errors={errors.video_url} onChange={(event) => setData('video_url', event.target.value)} />
             </div>
 
@@ -125,7 +222,52 @@ export default function QuestionForm({ exam, question = null }) {
 }
 
 function EditorField({ label, value, onChange, error }) {
-    return <div className="min-w-0"><label className="mb-2 block text-sm font-semibold text-slate-700">{label}</label><div className="overflow-hidden rounded-lg border border-slate-300"><CKEditor editor={ClassicEditor} data={value || ''} onChange={(_, editor) => onChange(editor.getData())} /></div>{error && <p className="mt-1 text-xs text-rose-600">{error}</p>}</div>;
+    const [editor, setEditor] = useState(null);
+    const [imageSelected, setImageSelected] = useState(false);
+
+    useEffect(() => {
+        if (!editor) return undefined;
+
+        const refreshImageSelection = () => {
+            const selectedImage = editor.model.document.selection.getSelectedElement();
+            setImageSelected(Boolean(selectedImage && ['imageBlock', 'imageInline'].includes(selectedImage.name)));
+        };
+
+        editor.model.document.selection.on('change:range', refreshImageSelection);
+        editor.editing.view.document.on('click', refreshImageSelection);
+        refreshImageSelection();
+
+        return () => {
+            editor.model.document.selection.off('change:range', refreshImageSelection);
+            editor.editing.view.document.off('click', refreshImageSelection);
+        };
+    }, [editor]);
+
+    const resizeImage = (width) => {
+        const selectedImage = editor?.model.document.selection.getSelectedElement();
+        if (!selectedImage || !['imageBlock', 'imageInline'].includes(selectedImage.name)) {
+            toast.error('Pilih gambar terlebih dahulu untuk mengubah ukurannya.');
+            return;
+        }
+
+        editor.model.change((writer) => {
+            if (width) writer.setAttribute('imageWidth', width, selectedImage);
+            else writer.removeAttribute('imageWidth', selectedImage);
+        });
+    };
+
+    return <div className="min-w-0">
+        <label className="mb-2 block text-sm font-semibold text-slate-700">{label}</label>
+        {imageSelected && <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-teal-100 bg-teal-50 px-3 py-2 text-xs text-slate-600">
+            <span className="font-semibold text-teal-800">Atur ukuran gambar:</span>
+            {[['25%', 'Kecil'], ['50%', 'Sedang'], ['75%', 'Besar'], ['100%', 'Lebar penuh']].map(([width, title]) => <button type="button" key={width} onClick={() => resizeImage(width)} className="rounded border border-teal-200 bg-white px-2 py-1 font-medium text-slate-600 hover:border-teal-500 hover:text-teal-700">{title}</button>)}
+            <button type="button" onClick={() => resizeImage(null)} className="rounded border border-teal-200 bg-white px-2 py-1 font-medium text-slate-600 hover:border-teal-500 hover:text-teal-700">Asli</button>
+        </div>}
+        <div className="overflow-hidden rounded-lg border border-slate-300">
+            <CKEditor editor={ClassicEditor} config={editorConfig} data={value || ''} onReady={setEditor} onChange={(_, instance) => onChange(instance.getData())} />
+        </div>
+        {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+    </div>;
 }
 
 function AnswerPanel({ title, children }) {

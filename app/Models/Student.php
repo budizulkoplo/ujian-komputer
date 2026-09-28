@@ -24,6 +24,11 @@ class Student extends Authenticatable
         'gender'
     ];
 
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
     /**
      * classroom
      *

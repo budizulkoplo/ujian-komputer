@@ -29,8 +29,7 @@ class LoginController extends Controller
             ])->withInput($request->only('nisn'));
         }
 
-        // Tabel students tidak menggunakan remember_token; gunakan session login biasa.
-        auth()->guard('student')->login($student);
+        auth()->guard('student')->login($student, $request->boolean('remember'));
         $request->session()->regenerate();
 
         return redirect()->route('student.dashboard');

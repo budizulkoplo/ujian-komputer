@@ -39,7 +39,8 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/storage',
+            // URL relatif menjaga gambar tetap mengikuti host dan port aplikasi.
+            'url' => env('FILESYSTEM_URL', '/storage'),
             'visibility' => 'public',
             'throw' => false,
         ],

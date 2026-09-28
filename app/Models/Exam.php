@@ -55,7 +55,9 @@ class Exam extends Model
      */
     public function questions()
     {
-        return $this->hasMany(Question::class)->orderBy('id', 'DESC');
+        return $this->hasMany(Question::class)
+            ->orderByRaw('COALESCE(sort_order, id) ASC')
+            ->orderBy('id', 'ASC');
     }
 
     public function scopeAccessibleBy(Builder $query, ?User $user): Builder

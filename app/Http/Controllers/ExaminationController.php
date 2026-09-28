@@ -14,8 +14,9 @@ class ExaminationController extends Controller
 {
     public function index()
     {
+        $student = auth()->guard('student')->user()->loadMissing('classroom');
         $examGroups = ExamGroup::with('exam.lesson', 'exam_session', 'student.classroom')
-            ->where('student_id', auth()->guard('student')->user()->id)->get();
+            ->where('student_id', $student->id)->get();
 
         $data = $examGroups->map(function ($examGroup) {
             $grade = Grade::firstOrCreate([
@@ -31,7 +32,24 @@ class ExaminationController extends Controller
             return ['exam_group' => $examGroup, 'grade' => $grade];
         })->values();
 
-        return Inertia::render('Student/Dashboard', ['exam_groups' => $data]);
+        $grades = $data->pluck('grade');
+        $completedGrades = $grades->filter(fn ($grade) => filled($grade->end_time));
+        $averageGrade = $completedGrades->isNotEmpty()
+            ? round((float) $completedGrades->avg(fn ($grade) => (float) $grade->grade), 1)
+            : 0;
+
+        return Inertia::render('Student/Dashboard', [
+            'exam_groups' => $data,
+            'stats' => [
+                'active_exams' => $grades->filter(fn ($grade) => blank($grade->end_time))->count(),
+                'total_exams' => $data->count(),
+                'average_grade' => $averageGrade,
+                'in_progress' => $grades->filter(fn ($grade) => filled($grade->start_time) && blank($grade->end_time))->count(),
+                'passed' => $completedGrades->filter(fn ($grade) => (float) $grade->grade >= 75)->count(),
+                'failed' => $completedGrades->filter(fn ($grade) => (float) $grade->grade < 75)->count(),
+            ],
+            'student_classroom' => $student->classroom?->title,
+        ]);
     }
 
     public function confirmation($id)
@@ -57,7 +75,10 @@ class ExaminationController extends Controller
 
         $questions = $examGroup->exam->random_question === 'Y'
             ? Question::where('exam_id', $examGroup->exam->id)->inRandomOrder()->get()
-            : Question::where('exam_id', $examGroup->exam->id)->get();
+            : Question::where('exam_id', $examGroup->exam->id)
+                ->orderByRaw('COALESCE(sort_order, id) ASC')
+                ->orderBy('id', 'ASC')
+                ->get();
 
         foreach ($questions as $order => $question) {
             $options = collect(range(1, 5))
