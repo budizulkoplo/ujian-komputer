@@ -126,6 +126,9 @@ Route::prefix('student')->group(function () {
         //route exam start
         Route::get('/examination-start/{id}', [ExaminationController::class, 'startExam'])->name('student.examination.startExam');
 
+        //catat perpindahan tab/aplikasi selama ujian
+        Route::post('/examination-violation', [ExaminationController::class, 'reportViolation'])->name('student.examination.reportViolation');
+
         //route exam show
         Route::get('/examination/{id}/{page}', [ExaminationController::class, 'show'])->name('student.examination.show');
 

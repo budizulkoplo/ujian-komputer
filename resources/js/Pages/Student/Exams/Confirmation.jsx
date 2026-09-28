@@ -21,9 +21,10 @@ export default function Confirmation({ exam_group: group, grade }) {
                 <div className="border-t border-slate-100 bg-slate-50 p-6 sm:p-8">
                     <p className="text-sm leading-6 text-slate-600">Pastikan koneksi internet stabil. Waktu ujian mulai dihitung saat tombol mulai ditekan. Jawaban yang sudah disimpan dapat diperiksa kembali selama waktu masih tersedia.</p>
                     {grade?.end_time && <p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">Ujian ini sudah selesai dikerjakan.</p>}
+                    {grade?.is_locked && <p className="mt-3 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">Ujian ini dikunci karena terdeteksi perpindahan tab atau aplikasi. Silakan hubungi guru/pengawas.</p>}
                     <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                         <Link href={route('student.dashboard')} className="rounded-xl border border-slate-300 px-5 py-3 text-center text-sm font-semibold text-slate-700 hover:bg-white">Batal</Link>
-                        {!grade?.end_time && <Link href={route('student.examination.startExam', group.id)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-teal-800"><IconPlayerPlay size={17} /> Mulai ujian</Link>}
+                        {!grade?.end_time && !grade?.is_locked && <Link href={route('student.examination.startExam', group.id)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-teal-800"><IconPlayerPlay size={17} /> Mulai ujian</Link>}
                     </div>
                 </div>
             </div>

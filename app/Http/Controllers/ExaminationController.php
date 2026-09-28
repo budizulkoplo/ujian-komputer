@@ -12,6 +12,8 @@ use Inertia\Inertia;
 
 class ExaminationController extends Controller
 {
+    private const CHEAT_LIMIT = 3;
+
     public function index()
     {
         $student = auth()->guard('student')->user()->loadMissing('classroom');
@@ -41,10 +43,10 @@ class ExaminationController extends Controller
         return Inertia::render('Student/Dashboard', [
             'exam_groups' => $data,
             'stats' => [
-                'active_exams' => $grades->filter(fn ($grade) => blank($grade->end_time))->count(),
+                'active_exams' => $grades->filter(fn ($grade) => blank($grade->end_time) && !$grade->is_locked)->count(),
                 'total_exams' => $data->count(),
                 'average_grade' => $averageGrade,
-                'in_progress' => $grades->filter(fn ($grade) => filled($grade->start_time) && blank($grade->end_time))->count(),
+                'in_progress' => $grades->filter(fn ($grade) => filled($grade->start_time) && blank($grade->end_time) && !$grade->is_locked)->count(),
                 'passed' => $completedGrades->filter(fn ($grade) => (float) $grade->grade >= 75)->count(),
                 'failed' => $completedGrades->filter(fn ($grade) => (float) $grade->grade < 75)->count(),
             ],
@@ -70,6 +72,9 @@ class ExaminationController extends Controller
         if (!$examGroup) return redirect()->route('student.dashboard');
 
         $grade = $this->grade($examGroup);
+        if ($grade->is_locked || $grade->end_time) {
+            return redirect()->route('student.dashboard')->with('error', 'Ujian ini tidak dapat dilanjutkan.');
+        }
         $grade->start_time ??= Carbon::now();
         $grade->save();
 
@@ -113,6 +118,9 @@ class ExaminationController extends Controller
         $active = (clone $baseAnswers)->where('question_order', $page)->first();
         $answerOrder = $active && $active->answer_order ? explode(',', $active->answer_order) : [];
         $duration = $this->grade($examGroup);
+        if ($duration->is_locked || $duration->end_time) {
+            return redirect()->route('student.dashboard')->with('error', 'Ujian ini sudah dikunci atau selesai.');
+        }
 
         return Inertia::render('Student/Exams/Show', [
             'id' => (int) $id,
@@ -130,6 +138,39 @@ class ExaminationController extends Controller
     {
         Grade::findOrFail($gradeId)->update(['duration' => $request->integer('duration')]);
         return response()->json(['success' => true]);
+    }
+
+    public function reportViolation(Request $request)
+    {
+        $studentId = auth()->guard('student')->user()->id;
+        $examGroup = ExamGroup::where('id', $request->integer('exam_group_id'))
+            ->where('student_id', $studentId)
+            ->firstOrFail();
+
+        $grade = Grade::where('exam_id', $examGroup->exam_id)
+            ->where('exam_session_id', $examGroup->exam_session_id)
+            ->where('student_id', $studentId)
+            ->firstOrFail();
+
+        if ($grade->end_time || $grade->is_locked) {
+            return response()->json([
+                'locked' => (bool) $grade->is_locked,
+                'cheat_count' => (int) $grade->cheat_count,
+                'limit' => self::CHEAT_LIMIT,
+            ]);
+        }
+
+        $grade->increment('cheat_count');
+        $grade->refresh();
+        if ($grade->cheat_count >= self::CHEAT_LIMIT) {
+            $grade->update(['is_locked' => true]);
+        }
+
+        return response()->json([
+            'locked' => (bool) $grade->is_locked,
+            'cheat_count' => (int) $grade->cheat_count,
+            'limit' => self::CHEAT_LIMIT,
+        ]);
     }
 
     public function answerQuestion(Request $request)
@@ -185,10 +226,69 @@ class ExaminationController extends Controller
         $examGroup = $this->examGroup($examGroupId);
         if (!$examGroup) return redirect()->route('student.dashboard');
 
+        $answers = Answer::where('exam_id', $examGroup->exam_id)
+            ->where('exam_session_id', $examGroup->exam_session_id)
+            ->where('student_id', auth()->guard('student')->user()->id)
+            ->get()
+            ->keyBy('question_id');
+
+        $answerDetails = Question::where('exam_id', $examGroup->exam_id)
+            ->orderByRaw('COALESCE(sort_order, id) ASC')
+            ->orderBy('id')
+            ->get()
+            ->values()
+            ->map(function (Question $question, int $index) use ($answers) {
+                $answer = $answers->get($question->id);
+                $options = collect(range(1, 5))
+                    ->filter(fn ($number) => filled($question->{"option_{$number}"}))
+                    ->map(fn ($number) => [
+                        'key' => (string) $number,
+                        'letter' => chr(64 + $number),
+                        'label' => $question->{"option_{$number}"},
+                    ])->values()->all();
+
+                return [
+                    'number' => $index + 1,
+                    'type' => $question->type,
+                    'question' => $question->question,
+                    'image' => $question->image,
+                    'options' => $options,
+                    'student_answer' => $this->resultAnswerValue($answer?->answer_value, $question->type),
+                    'correct_answer' => $this->resultAnswerKey($question->answer_key, $question->type),
+                    'is_correct' => $answer?->is_correct === 'Y',
+                    'score' => (float) ($answer?->score ?? 0),
+                    'max_score' => (float) $question->max_score,
+                ];
+            })->values();
+
         return Inertia::render('Student/Exams/Result', [
             'exam_group' => $examGroup,
             'grade' => $this->grade($examGroup),
+            'answer_details' => $answerDetails,
         ]);
+    }
+
+    private function resultAnswerValue(mixed $value, string $type): mixed
+    {
+        if ($value === null || $value === '') return null;
+        if (in_array($type, ['multiple_choice_complex', 'ordering'], true)) {
+            $decoded = is_array($value) ? $value : json_decode((string) $value, true);
+            return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
+        }
+
+        return (string) $value;
+    }
+
+    private function resultAnswerKey(mixed $value, string $type): mixed
+    {
+        if ($value === null || $value === '') return null;
+        if (in_array($type, ['multiple_choice_complex', 'ordering'], true)) {
+            $decoded = is_array($value) ? $value : json_decode((string) $value, true);
+            return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
+        }
+        if (is_array($value)) return (string) ($value[0] ?? '');
+
+        return (string) $value;
     }
 
     private function examGroup($id): ?ExamGroup

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { IconArrowLeft, IconArrowRight, IconCheck, IconClock, IconFlag, IconSend } from '@tabler/icons-react';
 import StudentLayout from '@/Layouts/StudentLayout';
@@ -9,6 +9,9 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     const initialAnswer = parseAnswer(activeAnswer?.answer_value, question?.type);
     const [value, setValue] = useState(initialAnswer);
     const [processing, setProcessing] = useState(false);
+    const [violationNotice, setViolationNotice] = useState(null);
+    const [locked, setLocked] = useState(false);
+    const lastViolationAt = useRef(0);
 
     useEffect(() => {
         const timer = window.setInterval(() => setRemaining((current) => Math.max(0, current - 1000)), 1000);
@@ -18,6 +21,40 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     useEffect(() => {
         if (remaining <= 0) finishExam();
     }, [remaining]);
+
+    useEffect(() => {
+        const reportViolation = async () => {
+            const now = Date.now();
+            if (now - lastViolationAt.current < 2000) return;
+            lastViolationAt.current = now;
+
+            try {
+                const response = await fetch(route('student.examination.reportViolation'), {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    },
+                    body: JSON.stringify({ exam_group_id: id }),
+                });
+                if (!response.ok) return;
+                const result = await response.json();
+                setViolationNotice(`Peringatan keamanan ${result.cheat_count}/${result.limit}. Jangan berpindah tab atau aplikasi selama ujian.`);
+                if (result.locked) setLocked(true);
+            } catch {
+                // Pencatatan pelanggaran tidak boleh menghentikan halaman ujian saat koneksi sesaat bermasalah.
+            }
+        };
+        const handleVisibilityChange = () => {
+            if (document.hidden) reportViolation();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [id]);
 
     const displayOptions = useMemo(() => (answerOrder || []).map(Number).filter((number) => question?.[`option_${number}`]), [answerOrder, question]);
     const saveAndGo = (nextPage) => {
@@ -39,6 +76,8 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     if (!question) return null;
     return <>
         <Head title={`Ujian - ${group.exam.title}`} />
+        {violationNotice && !locked ? <div className="fixed inset-x-3 top-3 z-50 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-lg sm:inset-x-auto sm:right-5 sm:w-96"><div className="flex items-start justify-between gap-3"><span>{violationNotice}</span><button type="button" onClick={() => setViolationNotice(null)} className="text-amber-700 hover:text-amber-950">×</button></div></div> : null}
+        {locked ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-5"><div className="w-full max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl"><p className="text-sm font-semibold uppercase tracking-widest text-rose-600">Ujian dikunci</p><h2 className="mt-2 text-2xl font-bold text-slate-900">Batas pelanggaran tercapai</h2><p className="mt-3 text-sm leading-6 text-slate-600">Halaman ujian mendeteksi perpindahan tab atau aplikasi sebanyak 3 kali. Silakan hubungi guru/pengawas untuk pemeriksaan lebih lanjut.</p><Link href={route('student.dashboard')} className="mt-6 inline-flex rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-800">Kembali ke dashboard</Link></div></div> : null}
         <div className="mx-auto max-w-6xl py-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
                 <div><p className="text-xs font-semibold uppercase tracking-wider text-teal-700">{group.exam.lesson?.title}</p><h1 className="mt-1 font-bold text-slate-900">{group.exam.title}</h1></div>
