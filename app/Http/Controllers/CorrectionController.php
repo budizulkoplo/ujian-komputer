@@ -12,23 +12,69 @@ class CorrectionController extends Controller
 {
     public function index(Request $request)
     {
-        $exams = $this->accessibleExams()->with('lesson')->get();
+        $exams = $this->accessibleExams()->with('lesson')->latest()->get();
         $selectedExamId = $request->integer('exam_id') ?: null;
+        $attempts = collect();
+        $selectedAttempt = null;
         $answers = collect();
 
         if ($selectedExamId && $exams->contains('id', $selectedExamId)) {
-            $answers = Answer::with(['student.classroom', 'question', 'exam_session'])
+            $attempts = Grade::with(['student.classroom', 'exam_session'])
                 ->where('exam_id', $selectedExamId)
-                ->whereHas('question', fn ($query) => $query->where('type', 'essay'))
-                ->orderBy('student_id')
-                ->orderBy('question_id')
+                ->whereNotNull('end_time')
+                ->latest('end_time')
                 ->get();
+
+            $answerRows = Answer::with('question')
+                ->where('exam_id', $selectedExamId)
+                ->whereIn('exam_session_id', $attempts->pluck('exam_session_id'))
+                ->whereIn('student_id', $attempts->pluck('student_id'))
+                ->get()
+                ->groupBy(fn (Answer $answer) => $answer->student_id . '-' . $answer->exam_session_id);
+
+            $attempts = $attempts->map(function (Grade $grade) use ($answerRows) {
+                $key = $grade->student_id . '-' . $grade->exam_session_id;
+                $studentAnswers = $answerRows->get($key, collect());
+                $manualAnswers = $studentAnswers->filter(fn (Answer $answer) => $answer->question?->type === 'essay');
+                $reviewedAnswers = $manualAnswers->filter(fn (Answer $answer) => (bool) $answer->is_reviewed);
+
+                return [
+                    'student_id' => $grade->student_id,
+                    'exam_session_id' => $grade->exam_session_id,
+                    'key' => $key,
+                    'student' => $grade->student,
+                    'exam_session' => $grade->exam_session,
+                    'grade' => $grade->grade,
+                    'released' => $grade->isReleased(),
+                    'total_questions' => $studentAnswers->count(),
+                    'manual_questions' => $manualAnswers->count(),
+                    'reviewed_questions' => $reviewedAnswers->count(),
+                    'correction_status' => $manualAnswers->isEmpty() || $manualAnswers->count() === $reviewedAnswers->count()
+                        ? 'completed'
+                        : 'pending',
+                ];
+            })->values();
+
+            $selectedKey = (string) $request->input('attempt');
+            $selectedAttempt = $selectedKey !== '' ? $attempts->firstWhere('key', $selectedKey) : null;
+
+            if ($selectedAttempt) {
+                $answers = Answer::with('question')
+                    ->where('exam_id', $selectedExamId)
+                    ->where('exam_session_id', $selectedAttempt['exam_session_id'])
+                    ->where('student_id', $selectedAttempt['student_id'])
+                    ->orderBy('question_order')
+                    ->get()
+                    ->map(fn (Answer $answer, $index) => $this->answerDetail($answer, $index + 1));
+            }
         }
 
         return Inertia::render('Dashboard/Corrections/Index', [
             'exams' => $exams,
+            'attempts' => $attempts,
             'answers' => $answers,
             'selectedExamId' => $selectedExamId,
+            'selectedAttemptKey' => $selectedAttempt['key'] ?? null,
         ]);
     }
 
@@ -36,19 +82,72 @@ class CorrectionController extends Controller
     {
         $answer->load('question');
         $this->ensureExamAccess($answer->exam_id);
+        abort_unless($answer->question?->type === 'essay', 422, 'Hanya jawaban essay yang perlu dikoreksi manual.');
 
         $data = $request->validate([
             'score' => ['required', 'numeric', 'min:0', 'max:' . ($answer->question->max_score ?? 0)],
+            'comment' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $answer->update([
             'score' => $data['score'],
             'is_correct' => (float) $data['score'] > 0 ? 'Y' : 'N',
+            'is_reviewed' => true,
+            'teacher_comment' => $data['comment'] ?? null,
         ]);
 
         $this->recalculateGrade($answer);
 
         return back()->with('success', 'Nilai essay berhasil disimpan.');
+    }
+
+    private function answerDetail(Answer $answer, int $number): array
+    {
+        $question = $answer->question;
+        $options = collect(range(1, 5))
+            ->filter(fn ($option) => filled($question?->{"option_{$option}"}))
+            ->map(fn ($option) => [
+                'key' => (string) $option,
+                'letter' => chr(64 + $option),
+                'label' => $question->{"option_{$option}"},
+            ])->values()->all();
+
+        return [
+            'id' => $answer->id,
+            'number' => $number,
+            'type' => $question?->type,
+            'question' => $question?->question,
+            'image' => $question?->image,
+            'options' => $options,
+            'student_answer' => $this->answerValue($answer->answer_value, $question?->type, $answer->answer),
+            'correct_answer' => $this->answerKey($question?->answer_key, $question?->type),
+            'is_correct' => $answer->is_correct === 'Y',
+            'is_reviewed' => (bool) $answer->is_reviewed,
+            'comment' => $answer->teacher_comment,
+            'score' => (float) $answer->score,
+            'max_score' => (float) ($question?->max_score ?? 0),
+        ];
+    }
+
+    private function answerValue(mixed $value, ?string $type, mixed $legacy = null): mixed
+    {
+        if (($value === null || $value === '') && $legacy !== null && (int) $legacy !== 0) $value = (string) $legacy;
+        if ($value === null || $value === '') return null;
+        if (in_array($type, ['multiple_choice_complex', 'ordering'], true)) {
+            $decoded = is_array($value) ? $value : json_decode((string) $value, true);
+            return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
+        }
+        return (string) $value;
+    }
+
+    private function answerKey(mixed $value, ?string $type): mixed
+    {
+        if ($value === null || $value === '') return null;
+        if (in_array($type, ['multiple_choice_complex', 'ordering'], true)) {
+            $decoded = is_array($value) ? $value : json_decode((string) $value, true);
+            return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
+        }
+        return is_array($value) ? (string) ($value[0] ?? '') : (string) $value;
     }
 
     private function recalculateGrade(Answer $answer): void
@@ -74,9 +173,7 @@ class CorrectionController extends Controller
 
     private function accessibleExams()
     {
-        $user = auth()->user();
-
-        return Exam::accessibleBy($user);
+        return Exam::accessibleBy(auth()->user());
     }
 
     private function ensureExamAccess(int $examId): void

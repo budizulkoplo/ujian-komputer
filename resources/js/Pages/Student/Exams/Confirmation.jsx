@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { IconArrowLeft, IconClock, IconFileDescription, IconPlayerPlay } from '@tabler/icons-react';
+import { IconArrowLeft, IconCheck, IconClock, IconFileDescription, IconPlayerPlay, IconUser } from '@tabler/icons-react';
 import StudentLayout from '@/Layouts/StudentLayout';
 
 export default function Confirmation({ exam_group: group, grade }) {
@@ -17,6 +17,8 @@ export default function Confirmation({ exam_group: group, grade }) {
                 <div className="grid gap-4 p-6 sm:grid-cols-2 sm:p-8">
                     <Info icon={<IconClock size={20} />} label="Durasi" value={`${exam.duration} menit`} />
                     <Info icon={<IconFileDescription size={20} />} label="Sesi" value={group.exam_session?.title} />
+                    <Info icon={<IconUser size={20} />} label="Nama peserta" value={group.student?.name} />
+                    <Info icon={<IconCheck size={20} />} label="NISN" value={group.student?.nisn} />
                 </div>
                 <div className="border-t border-slate-100 bg-slate-50 p-6 sm:p-8">
                     <p className="text-sm leading-6 text-slate-600">Pastikan koneksi internet stabil. Waktu ujian mulai dihitung saat tombol mulai ditekan. Jawaban yang sudah disimpan dapat diperiksa kembali selama waktu masih tersedia.</p>

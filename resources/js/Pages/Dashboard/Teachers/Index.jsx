@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Head, router, useForm } from '@inertiajs/react';
 import DashboardLayout from '@/Layouts/DashboardLayout';
 import Button from '@/Components/Dashboard/Button';
@@ -8,12 +8,14 @@ import Modal from '@/Components/Dashboard/Modal';
 import Pagination from '@/Components/Dashboard/Pagination';
 import Search from '@/Components/Dashboard/Search';
 import Table from '@/Components/Dashboard/Table';
-import { IconCirclePlus, IconPencil, IconTrash, IconUser } from '@tabler/icons-react';
+import { IconCirclePlus, IconFileSpreadsheet, IconPencil, IconTrash, IconUpload, IconUser } from '@tabler/icons-react';
 
 const emptyData = { id: '', name: '', email: '', nip: '', password: '', password_confirmation: '', assignments: [], isUpdate: false, isOpen: false };
 
 export default function Index({ teachers, lessons, classrooms, filters = {} }) {
     const { data, setData, post, transform, errors, processing } = useForm(emptyData);
+    const importInput = useRef(null);
+    const { data: importData, setData: setImportData, post: postImport, processing: importing, errors: importErrors, reset: resetImport } = useForm({ file: null });
     const [lessonSearch, setLessonSearch] = useState('');
     const filteredLessons = useMemo(() => lessons.filter((lesson) => lesson.title.toLowerCase().includes(lessonSearch.toLowerCase())), [lessons, lessonSearch]);
 
@@ -40,6 +42,17 @@ export default function Index({ teachers, lessons, classrooms, filters = {} }) {
         post(data.isUpdate ? route('teachers.update', data.id) : route('teachers.store'), { onSuccess: resetForm });
     };
 
+    const importTeachers = (event) => {
+        event.preventDefault();
+        postImport(route('teachers.import'), {
+            forceFormData: true,
+            onSuccess: () => {
+                resetImport();
+                if (importInput.current) importInput.current.value = '';
+            },
+        });
+    };
+
     const edit = (teacher) => setData({
         ...data,
         id: teacher.id,
@@ -60,12 +73,25 @@ export default function Index({ teachers, lessons, classrooms, filters = {} }) {
     return <>
         <Head title="Data Guru" />
         <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <Button type="button" label="Tambah Guru" icon={<IconCirclePlus size={19} />} className="w-fit border bg-white text-gray-700 hover:bg-gray-100" onClick={() => setData('isOpen', true)} />
+            <div className="flex flex-wrap gap-2">
+                <Button type="button" label="Tambah Guru" icon={<IconCirclePlus size={19} />} className="w-fit border bg-white text-gray-700 hover:bg-gray-100" onClick={() => setData('isOpen', true)} />
+                <a href={route('teachers.template')} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><IconFileSpreadsheet size={18} /> Template</a>
+                <a href={route('teachers.export')} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"><IconFileSpreadsheet size={18} /> Export Excel</a>
+            </div>
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                 <Search url={route('teachers.index')} placeholder="Cari nama, email, atau NIP" />
                 <select value={filters.lesson_id || ''} onChange={(event) => router.get(route('teachers.index'), { search: filters.search || undefined, lesson_id: event.target.value || undefined }, { preserveState: true })} className="rounded-lg border-slate-300 bg-white text-sm text-slate-700 focus:border-teal-500 focus:ring-teal-500"><option value="">Semua mata pelajaran</option>{lessons.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}</select>
             </div>
         </div>
+
+        <div className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center">
+            <form onSubmit={importTeachers} className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                <input ref={importInput} type="file" accept=".xlsx,.xls,.csv" required onChange={(event) => setImportData('file', event.target.files?.[0] || null)} className="max-w-full rounded-md border border-slate-200 px-3 py-2 text-sm" />
+                <Button type="submit" disabled={importing || !importData.file} className="bg-teal-700 text-white hover:bg-teal-800 disabled:opacity-50" icon={<IconUpload size={18} />} label={importing ? 'Mengimpor...' : 'Import Excel'} />
+            </form>
+            <p className="text-xs text-slate-500">Satu guru dapat memiliki beberapa baris mapel/kelas dengan email yang sama.</p>
+        </div>
+        {importErrors.file && <p className="mb-3 text-sm text-rose-600">{importErrors.file}</p>}
 
         <Card title="Data Guru">
             <Table>

@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use App\Services\ExamParticipantSyncService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -133,7 +134,10 @@ class StudentController extends Controller
         }
 
         DB::transaction(function () use ($students) {
-            foreach ($students as $student) Student::create($student);
+            foreach ($students as $studentData) {
+                $student = Student::create($studentData);
+                app(ExamParticipantSyncService::class)->syncStudent($student);
+            }
         });
 
         return back()->with('success', count($students) . ' data siswa berhasil diimpor.');
@@ -162,13 +166,14 @@ class StudentController extends Controller
         ]);
 
         //create student
-        Student::create([
+        $student = Student::create([
             'name' => $request->name,
             'nisn' => $request->nisn,
             'gender' => $request->gender,
             'password' => $request->password,
             'classroom_id' => $request->classroom_id
         ]);
+        app(ExamParticipantSyncService::class)->syncStudent($student);
 
         return back();
     }
@@ -224,6 +229,8 @@ class StudentController extends Controller
                 'classroom_id' => $request->classroom_id
             ]);
         }
+
+        app(ExamParticipantSyncService::class)->syncStudent($student->fresh());
 
         //redirect
         return back();

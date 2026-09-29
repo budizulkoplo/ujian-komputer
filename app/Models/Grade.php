@@ -64,4 +64,17 @@ class Grade extends Model
     {
         return $this->belongsTo(Student::class);
     }
+
+    public function isReleased(): bool
+    {
+        if (!$this->end_time) return false;
+
+        return !Answer::where('exam_id', $this->exam_id)
+            ->where('exam_session_id', $this->exam_session_id)
+            ->where('student_id', $this->student_id)
+            ->whereHas('question', fn ($query) => $query->where('type', 'essay'))
+            ->where(function ($query) {
+                $query->where('is_reviewed', false)->orWhereNull('is_reviewed');
+            })->exists();
+    }
 }

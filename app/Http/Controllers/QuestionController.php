@@ -193,6 +193,7 @@ class QuestionController extends Controller
     public function edit(Exam $exam, Question $question)
     {
         $this->ensureExamAccess($exam);
+        abort_unless($question->exam_id === $exam->id, 404);
 
         //render with inertia
         return Inertia::render('Dashboard/Questions/Edit', [
@@ -207,6 +208,7 @@ class QuestionController extends Controller
     public function update(Request $request, Exam $exam, Question $question)
     {
         $this->ensureExamAccess($exam);
+        abort_unless($question->exam_id === $exam->id, 404);
         $data = $this->validatedData($request);
         if (array_key_exists('image', $data) && $question->image && $question->image !== $data['image']) {
             Storage::disk('public')->delete($question->image);
@@ -223,6 +225,7 @@ class QuestionController extends Controller
     public function destroy(Exam $exam, Question $question)
     {
         $this->ensureExamAccess($exam);
+        abort_unless($question->exam_id === $exam->id, 404);
         $question->forceDelete();
 
         return back();

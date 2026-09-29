@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+    .field {
+        @apply w-full rounded-lg border-slate-300 text-sm focus:border-teal-500 focus:ring-teal-500;
+    }
+}
+
 .no-transition * {
     transition: none !important;
 }

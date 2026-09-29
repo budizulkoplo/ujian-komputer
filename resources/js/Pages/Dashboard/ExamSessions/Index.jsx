@@ -7,7 +7,7 @@ import Widget from '@/Components/Dashboard/Widget';
 import Modal from '@/Components/Dashboard/Modal';
 import DashboardLayout from '@/Layouts/DashboardLayout';
 import { Head, useForm, usePage } from '@inertiajs/react';
-import { IconBox, IconChartBar, IconCirclePlus, IconDatabaseOff, IconPackage, IconPencil, IconPencilCheck, IconPencilCog, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
+import { IconBox, IconChartBar, IconCirclePlus, IconDatabaseOff, IconKey, IconPackage, IconPencil, IconPencilCheck, IconPencilCog, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
 import Input from '@/Components/Dashboard/Input';
 import InputSelect from '@/Components/Dashboard/InputSelect';
 import { useEffect, useState } from 'react';
@@ -27,6 +27,9 @@ export default function Index({ exam_sessions, exams }) {
         isUpdate: false,
         isOpen: false,
     });
+    const { data: reopenData, setData: setReopenData, post: postReopen, processing: reopening, errors: reopenErrors } = useForm({
+        reopen_until: defaultReopenUntil(),
+    });
 
     // gabungkan date dan time
     const formatDateTime = (date, time) => {
@@ -39,6 +42,13 @@ export default function Index({ exam_sessions, exams }) {
 
     // State for select inputs
     const [selectedExam, setSelectedExam] = useState(null)
+    const [tokenSession, setTokenSession] = useState(null)
+
+    const isTokenActive = (session) => !session.token_closed_at && new Date(session.end_time) >= new Date();
+    const reopenToken = (event) => {
+        event.preventDefault();
+        if (tokenSession) postReopen(route('exam_sessions.reopen_token', tokenSession.id), { preserveScroll: true });
+    };
 
     // Set gender
     const setSelectedExamHandler = (value) => {
@@ -229,6 +239,7 @@ export default function Index({ exam_sessions, exams }) {
                             <Table.Th>Sesi</Table.Th>
                             <Table.Th>Mulai</Table.Th>
                             <Table.Th>Selesai</Table.Th>
+                            <Table.Th>Token</Table.Th>
                             <Table.Th></Table.Th>
                         </tr>
                     </Table.Thead>
@@ -251,7 +262,17 @@ export default function Index({ exam_sessions, exams }) {
                                     <Table.Td>{exam_session.start_time}</Table.Td>
                                     <Table.Td>{exam_session.end_time}</Table.Td>
                                     <Table.Td>
+                                        <div className="flex flex-col items-start gap-1"><span className={`rounded-md px-2 py-1 font-mono text-sm font-bold ${isTokenActive(exam_session) ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{exam_session.token || '-'}</span>{!isTokenActive(exam_session) ? <span className="text-[10px] text-slate-500">Ditutup</span> : null}</div>
+                                    </Table.Td>
+                                    <Table.Td>
                                         <div className='flex gap-2 md:justify-center'>
+                                            <Button
+                                                type={'modal'}
+                                                icon={<IconKey size={16} strokeWidth={1.5} />}
+                                                label={'Token'}
+                                                className={'border border-blue-300 bg-blue-100 text-blue-600 hover:bg-blue-200'}
+                                                onClick={() => setTokenSession(exam_session)}
+                                            />
                                             <Button
                                                 type={'link'}
                                                 // icon={<IconEye size={16} strokeWidth={1.5} />}
@@ -296,7 +317,7 @@ export default function Index({ exam_sessions, exams }) {
                                 </tr>
                             )) :
 
-                            <Table.Empty colSpan={6} message={
+                            <Table.Empty colSpan={7} message={
                                 <>
                                     <div className='flex justify-center items-center text-center mb-2'>
                                         <IconDatabaseOff size={24} strokeWidth={1.5} className='text-gray-500 dark:text-white' />
@@ -308,8 +329,21 @@ export default function Index({ exam_sessions, exams }) {
                     </Table.Tbody>
                 </Table>
             </Table.Card >
+            <Modal show={Boolean(tokenSession)} onClose={() => setTokenSession(null)} title="Token Ujian">
+                {tokenSession && <div className="space-y-4 text-center">
+                    <p className="text-sm text-slate-500">{tokenSession.exam?.title} — {tokenSession.exam?.classroom?.title}</p>
+                    <div className="rounded-xl bg-slate-900 px-4 py-6 font-mono text-5xl font-black tracking-[0.35em] text-amber-300">{tokenSession.token || '-'}</div>
+                    <p className="text-sm text-slate-600">{isTokenActive(tokenSession) ? 'Sampaikan token ini kepada peserta di ruang ujian.' : 'Token ini sudah ditutup. Buka token susulan di bawah untuk membuat kode baru.'}</p>
+                    <form onSubmit={reopenToken} className="border-t border-slate-200 pt-4 text-left">
+                        <label className="block text-sm font-semibold text-slate-700">Buka token susulan sampai</label>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-start"><div className="flex-1"><input type="datetime-local" value={reopenData.reopen_until} onChange={(event) => setReopenData('reopen_until', event.target.value)} className="w-full rounded-lg border-slate-300 text-sm" />{reopenErrors.reopen_until ? <p className="mt-1 text-xs text-rose-600">{reopenErrors.reopen_until}</p> : null}</div><button type="submit" disabled={reopening} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60">{reopening ? 'Membuka...' : 'Buka Token Susulan'}</button></div>
+                    </form>
+                </div>}
+            </Modal>
         </>
     );
 }
 
 Index.layout = page => <DashboardLayout children={page} />
+
+function defaultReopenUntil() { const date = new Date(Date.now() + (2 * 60 * 60 * 1000)); const pad = (value) => String(value).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`; }

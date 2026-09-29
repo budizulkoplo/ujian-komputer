@@ -101,4 +101,9 @@ class User extends Authenticatable
             ->where('classroom_id', $classroomId)
             ->exists();
     }
+
+    public function teachingClassroomIds()
+    {
+        return $this->teacher?->assignments()->pluck('classroom_id')->unique() ?? collect();
+    }
 }

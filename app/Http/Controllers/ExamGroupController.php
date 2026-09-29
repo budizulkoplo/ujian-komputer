@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ExamGroup;
 use App\Models\ExamSession;
 use App\Models\Student;
+use App\Models\Exam;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -23,6 +24,7 @@ class ExamGroupController extends Controller
      */
     public function create(ExamSession $exam_session)
     {
+        $this->ensureAccess($exam_session);
         //get exams
         $exam = $exam_session->exam;
 
@@ -45,20 +47,22 @@ class ExamGroupController extends Controller
      */
     public function store(Request $request, ExamSession $exam_session)
     {
+        $this->ensureAccess($exam_session);
         //validate request
         $request->validate([
             'student_id' => 'required',
         ]);
 
         //create exam_group
+        $exam = $exam_session->exam;
         foreach ($request->student_id as $student_id) {
 
             //select student
-            $student = Student::findOrFail($student_id);
+            $student = Student::where('classroom_id', $exam->classroom_id)->findOrFail($student_id);
 
             //create exam_group
             ExamGroup::create([
-                'exam_id' => $request->exam_id,
+                'exam_id' => $exam->id,
                 'exam_session_id' => $exam_session->id,
                 'student_id' => $student->id,
             ]);
@@ -97,10 +101,17 @@ class ExamGroupController extends Controller
      */
     public function destroy(ExamSession $exam_session, ExamGroup $exam_group)
     {
+        $this->ensureAccess($exam_session);
+        abort_unless($exam_group->exam_session_id === $exam_session->id, 404);
         //delete exam_group
         $exam_group->delete();
 
         //redirect
         return back();
+    }
+
+    private function ensureAccess(ExamSession $examSession): void
+    {
+        abort_unless(Exam::accessibleBy(auth()->user())->whereKey($examSession->exam_id)->exists(), 403);
     }
 }

@@ -15,7 +15,7 @@ class LessonController extends Controller
     public function index()
     {
         // get lesson
-        $lessons = Lesson::query()->when(request()->search, function ($lessons) {
+        $lessons = $this->accessibleLessons()->when(request()->search, function ($lessons) {
             $lessons = $lessons->where('title', 'like', '%' . request()->search . '%');
         })->latest()->paginate(10);
 
@@ -41,6 +41,7 @@ class LessonController extends Controller
      */
     public function store(Request $request)
     {
+        abort_unless(!auth()->user()?->isTeacher(), 403);
         // validate request
         $request->validate([
             'title' => 'required|string|unique:lessons',
@@ -79,6 +80,7 @@ class LessonController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        abort_unless(!auth()->user()?->isTeacher(), 403);
         // defining lesson
         $id = Lesson::findOrFail($id);
 
@@ -100,10 +102,19 @@ class LessonController extends Controller
      */
     public function destroy(string $id)
     {
+        abort_unless(!auth()->user()?->isTeacher(), 403);
         // defining lesson
         $id = Lesson::findOrFail($id);
 
         // delete lesson
         $id->forceDelete();
+    }
+
+    private function accessibleLessons()
+    {
+        $user = auth()->user();
+        if (!$user?->isTeacher()) return Lesson::query();
+
+        return Lesson::whereHas('teachers', fn ($query) => $query->whereKey($user->teacher?->id));
     }
 }

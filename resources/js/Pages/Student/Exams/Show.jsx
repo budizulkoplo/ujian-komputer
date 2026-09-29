@@ -65,6 +65,7 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
         router.post(route('student.examination.answerQuestion'), {
             exam_id: group.exam.id,
             exam_session_id: group.exam_session.id,
+            exam_group_id: id,
             question_id: question.id,
             duration: remaining,
             answer_value: value,

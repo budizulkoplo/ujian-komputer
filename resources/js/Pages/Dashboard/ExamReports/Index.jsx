@@ -1,0 +1,56 @@
+import DashboardLayout from '@/Layouts/DashboardLayout';
+import { Head, router, useForm } from '@inertiajs/react';
+import { IconChecklist, IconFileDescription, IconFileTypePdf, IconPlus, IconPrinter, IconRefresh, IconUsers } from '@tabler/icons-react';
+
+export default function Index({ exam_sessions: sessions = [], selected_session: selectedSession = null, participants = [], teachers = [] }) {
+    const report = selectedSession?.exam_report;
+    const { data, setData, post, processing, errors } = useForm({
+        teacher_id: report?.teacher_id || teachers[0]?.id || '',
+        exam_date: report?.exam_date || dateOnly(selectedSession?.start_time),
+        start_time: report?.start_time?.slice(0, 5) || timeOnly(selectedSession?.start_time),
+        end_time: report?.end_time?.slice(0, 5) || timeOnly(selectedSession?.end_time),
+        status: report?.status || 'Draft',
+        room: report?.room || '',
+        important_events: report?.important_events || '',
+        technical_issues: report?.technical_issues || '',
+        follow_up: report?.follow_up || '',
+    });
+    const { data: reopenData, setData: setReopenData, post: postReopen, processing: reopening, errors: reopenErrors } = useForm({
+        reopen_until: defaultReopenUntil(),
+    });
+    const openSession = (event) => {
+        if (event.target.value) router.get(route('exam_reports.index', { exam_session_id: event.target.value }));
+    };
+    const save = (event) => {
+        event.preventDefault();
+        if (selectedSession) post(route('exam_reports.store', selectedSession.id), { preserveScroll: true });
+    };
+    const reopen = (event) => {
+        event.preventDefault();
+        if (report) postReopen(route('exam_reports.reopen_token', report.id), { preserveScroll: true });
+    };
+
+    return <>
+        <Head title="Berita Acara Ujian" />
+        <div className="space-y-5">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><h1 className="flex items-center gap-3 text-3xl font-bold text-slate-900"><IconFileDescription className="text-blue-600" size={32} /> Berita Acara Ujian</h1><select value={selectedSession?.id || ''} onChange={openSession} className="rounded-lg border-slate-300 text-sm sm:w-80"><option value="">Pilih tes yang sudah dikerjakan</option>{sessions.map((session) => <option key={session.id} value={session.id}>{session.exam?.title} — {session.exam?.classroom?.title} — {session.title}</option>)}</select></div>
+            {!selectedSession ? <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">Belum ada sesi ujian yang dapat dibuatkan berita acara.</div> : <>
+                <section className="rounded-xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-200 px-5 py-4"><h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900"><IconChecklist size={20} className="text-blue-600" /> Informasi Ujian</h2></div><div className="grid gap-5 p-5 md:grid-cols-2"><Info label="Judul Ujian" value={selectedSession.exam?.title} /><Info label="Mata Pelajaran" value={selectedSession.exam?.lesson?.title} /><Info label="Waktu Ujian" value={`${formatDate(selectedSession.start_time)} - ${formatClock(selectedSession.end_time)}`} /><Info label="Kelas Target" value={selectedSession.exam?.classroom?.title} /></div><div className="mx-5 mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Token Ujian</p><p className="mt-1 text-xs text-amber-800">Token yang disampaikan proktor kepada peserta.</p></div><div className="flex items-center gap-3"><span className="rounded-lg bg-slate-900 px-4 py-2 font-mono text-2xl font-black tracking-[0.25em] text-amber-300">{selectedSession.token || '-'}</span><span className={`rounded-full px-3 py-1 text-xs font-semibold ${selectedSession.token_closed_at ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-700'}`}>{selectedSession.token_closed_at ? 'Ditutup' : 'Aktif'}</span></div></div></section>
+                <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center justify-between bg-gradient-to-r from-blue-500 to-purple-700 px-5 py-4 text-white"><h2 className="flex items-center gap-2 text-lg font-bold"><IconUsers size={23} /> {selectedSession.exam?.classroom?.title}</h2><span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold">{report ? report.status : 'Belum Dibuat'}</span></div><div className="p-5">{report ? <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-3"><Stat label="Jumlah Peserta" value={report.participant_count} /><Stat label="Hadir" value={report.present_count} tone="text-emerald-600" /><Stat label="Tidak Hadir" value={report.absent_count} tone="text-rose-600" /></div> : <div className="py-5 text-center text-slate-500">Berita acara untuk sesi ini belum dibuat.</div>}<div className="mt-5 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => document.getElementById('form-berita-acara')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"><IconPlus size={18} /> {report ? 'Edit Berita Acara' : 'Buat Berita Acara'}</button>{report ? <><a href={route('exam_reports.print', report.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"><IconPrinter size={17} /> Cetak</a><a href={route('exam_reports.pdf', report.id)} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700"><IconFileTypePdf size={17} /> Export PDF</a></> : null}</div>{report ? <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><p className="font-semibold text-amber-900">Perlu ujian susulan?</p><p className="mt-1 text-xs text-amber-800">Buka kembali token dengan kode baru sampai waktu yang ditentukan. Setelah berita acara disimpan lagi, token akan ditutup kembali.</p></div><form onSubmit={reopen} className="flex flex-col gap-2 sm:flex-row sm:items-start"><div><input type="datetime-local" value={reopenData.reopen_until} onChange={(event) => setReopenData('reopen_until', event.target.value)} className="rounded-lg border-amber-300 text-sm" />{reopenErrors.reopen_until ? <p className="mt-1 text-xs text-rose-600">{reopenErrors.reopen_until}</p> : null}</div><button type="submit" disabled={reopening} className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"><IconRefresh size={17} /> {reopening ? 'Membuka...' : 'Buka Token Susulan'}</button></form></div></div> : null}</div></section>
+                <form id="form-berita-acara" onSubmit={save} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="mb-5 text-xl font-bold text-slate-900">{report ? 'Edit Berita Acara' : 'Buat Berita Acara'} — {selectedSession.exam?.classroom?.title}</h2><div className="grid gap-4 md:grid-cols-2"><Field label="Guru Pengawas" error={errors.teacher_id}><select value={data.teacher_id} onChange={(event) => setData('teacher_id', event.target.value)} className="field"><option value="">Pilih guru</option>{teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.user?.name}</option>)}</select></Field><Field label="Tanggal Ujian" error={errors.exam_date}><input type="date" value={data.exam_date || ''} onChange={(event) => setData('exam_date', event.target.value)} className="field" /></Field><Field label="Waktu Mulai" error={errors.start_time}><input type="time" value={data.start_time || ''} onChange={(event) => setData('start_time', event.target.value)} className="field" /></Field><Field label="Waktu Selesai" error={errors.end_time}><input type="time" value={data.end_time || ''} onChange={(event) => setData('end_time', event.target.value)} className="field" /></Field><Field label="Status"><select value={data.status} onChange={(event) => setData('status', event.target.value)} className="field"><option value="Draft">Draft</option><option value="Final">Final</option></select></Field><Field label="Ruangan"><input value={data.room} onChange={(event) => setData('room', event.target.value)} placeholder="Misal: Lab. Komputer 1" className="field" /></Field></div><div className="mt-4 space-y-4"><TextArea label="Kejadian Penting" value={data.important_events} onChange={(value) => setData('important_events', value)} placeholder="Catat kejadian penting selama ujian berlangsung..." /><TextArea label="Kendala Teknis" value={data.technical_issues} onChange={(value) => setData('technical_issues', value)} placeholder="Catat kendala teknis yang dialami..." /><TextArea label="Tindak Lanjut" value={data.follow_up} onChange={(value) => setData('follow_up', value)} placeholder="Rencana tindak lanjut dari hasil ujian..." /></div><div className="mt-5 flex justify-end"><button type="submit" disabled={processing} className="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">Simpan Berita Acara</button></div></form>
+            </>}
+        </div>
+    </>;
+}
+
+function Info({ label, value }) { return <div><p className="text-xs uppercase tracking-wider text-slate-500">{label}</p><p className="mt-1 font-semibold text-slate-800">{value || '-'}</p></div>; }
+function Stat({ label, value, tone = 'text-slate-900' }) { return <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-center"><p className={`text-2xl font-bold ${tone}`}>{value ?? 0}</p><p className="mt-1 text-xs text-slate-500">{label}</p></div>; }
+function Field({ label, error, children }) { return <label className="block text-sm text-slate-700">{label}<div className="mt-2">{children}</div>{error ? <p className="mt-1 text-xs text-rose-600">{error}</p> : null}</label>; }
+function TextArea({ label, value, onChange, placeholder }) { return <label className="block text-sm text-slate-700">{label}<textarea rows="3" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="mt-2 w-full rounded-lg border-slate-300" /></label>; }
+function dateOnly(value) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
+function timeOnly(value) { return value ? new Date(value).toTimeString().slice(0, 5) : ''; }
+function formatDate(value) { return value ? new Date(value).toLocaleDateString('id-ID') : '-'; }
+function formatClock(value) { return value ? new Date(value).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'; }
+function defaultReopenUntil() { const date = new Date(Date.now() + (2 * 60 * 60 * 1000)); const pad = (value) => String(value).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`; }
+
+Index.layout = page => <DashboardLayout children={page} />;

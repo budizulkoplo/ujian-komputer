@@ -7,6 +7,7 @@ use App\Models\AppSetting;
 use App\Models\ExamGroup;
 use App\Models\Grade;
 use App\Models\Question;
+use App\Services\ExamParticipantSyncService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -16,6 +17,7 @@ class ExaminationController extends Controller
     public function index()
     {
         $student = auth()->guard('student')->user()->loadMissing('classroom');
+        app(ExamParticipantSyncService::class)->syncStudent($student);
         $examGroups = ExamGroup::with('exam.lesson', 'exam_session', 'student.classroom')
             ->where('student_id', $student->id)->get();
 
@@ -29,12 +31,13 @@ class ExaminationController extends Controller
                 'total_correct' => 0,
                 'grade' => 0,
             ]);
+            $grade->results_released = $grade->isReleased();
 
             return ['exam_group' => $examGroup, 'grade' => $grade];
         })->values();
 
         $grades = $data->pluck('grade');
-        $completedGrades = $grades->filter(fn ($grade) => filled($grade->end_time));
+        $completedGrades = $grades->filter(fn ($grade) => filled($grade->end_time) && $grade->results_released);
         $averageGrade = $completedGrades->isNotEmpty()
             ? round((float) $completedGrades->avg(fn ($grade) => (float) $grade->grade), 1)
             : 0;
@@ -59,10 +62,41 @@ class ExaminationController extends Controller
         if (!$examGroup) return redirect()->route('student.dashboard');
 
         $grade = $this->grade($examGroup);
+        if (!$grade->start_time && !session()->get($this->tokenSessionKey($examGroup->id), false)) {
+            return redirect()->route('student.dashboard')->with('error', 'Masukkan token ujian terlebih dahulu.');
+        }
         return Inertia::render('Student/Exams/Confirmation', [
             'exam_group' => $examGroup,
             'grade' => $grade,
         ]);
+    }
+
+    public function verifyToken(Request $request)
+    {
+        $student = auth()->guard('student')->user()->loadMissing('classroom');
+        $data = $request->validate(['token' => ['required', 'string', 'regex:/^[A-Za-z][0-9]{4}$/']]);
+        $token = strtoupper($data['token']);
+        $session = \App\Models\ExamSession::with('exam')
+            ->whereRaw('UPPER(token) = ?', [$token])
+            ->whereNull('token_closed_at')
+            ->where('start_time', '<=', now())
+            ->where('end_time', '>=', now())
+            ->whereHas('exam', fn ($query) => $query->where('classroom_id', $student->classroom_id))
+            ->first();
+
+        if (!$session) {
+            return back()->withErrors(['token' => 'Token tidak valid, bukan untuk kelas Anda, atau sudah tidak aktif.']);
+        }
+
+        $group = ExamGroup::withTrashed()->firstOrCreate([
+            'exam_id' => $session->exam_id,
+            'exam_session_id' => $session->id,
+            'student_id' => $student->id,
+        ]);
+        if ($group->trashed()) $group->restore();
+        session()->put($this->tokenSessionKey($group->id), true);
+
+        return redirect()->route('student.examination.confirmation', $group->id);
     }
 
     public function startExam($id)
@@ -71,6 +105,9 @@ class ExaminationController extends Controller
         if (!$examGroup) return redirect()->route('student.dashboard');
 
         $grade = $this->grade($examGroup);
+        if (!$grade->start_time && !session()->pull($this->tokenSessionKey($examGroup->id), false)) {
+            return redirect()->route('student.dashboard')->with('error', 'Masukkan token ujian terlebih dahulu.');
+        }
         if ($grade->is_locked || $grade->end_time) {
             return redirect()->route('student.dashboard')->with('error', 'Ujian ini tidak dapat dilanjutkan.');
         }
@@ -82,6 +119,13 @@ class ExaminationController extends Controller
             ->orderByRaw('COALESCE(sort_order, id) ASC')
             ->orderBy('id', 'ASC')
             ->get();
+        $hasAnswers = Answer::where('student_id', auth()->guard('student')->user()->id)
+            ->where('exam_id', $examGroup->exam->id)
+            ->where('exam_session_id', $examGroup->exam_session->id)
+            ->exists();
+        if ($examGroup->exam->random_question === 'Y' && !$hasAnswers) {
+            $questions = $questions->shuffle()->values();
+        }
 
         foreach ($questions as $order => $question) {
             $answer = Answer::firstOrNew([
@@ -96,10 +140,17 @@ class ExaminationController extends Controller
                 $options = collect(range(1, 5))
                     ->filter(fn ($number) => filled($question->{"option_{$number}"}))
                     ->values()->all();
-                if ($examGroup->exam->random_answer === 'Y' && $question->type !== 'ordering') shuffle($options);
+                if ($examGroup->exam->random_answer === 'Y') shuffle($options);
 
                 $answer->answer_order = implode(',', $options);
                 $answer->answer = 0;
+                $answer->is_reviewed = $question->type !== 'essay';
+            } elseif (!$answer->answer_order) {
+                $options = collect(range(1, 5))
+                    ->filter(fn ($number) => filled($question->{"option_{$number}"}))
+                    ->values()->all();
+                if ($examGroup->exam->random_answer === 'Y') shuffle($options);
+                $answer->answer_order = implode(',', $options);
             }
             $answer->save();
         }
@@ -113,7 +164,8 @@ class ExaminationController extends Controller
         if (!$examGroup) return redirect()->route('student.dashboard');
 
         $baseAnswers = Answer::with('question')->where('student_id', auth()->guard('student')->user()->id)
-            ->where('exam_id', $examGroup->exam->id);
+            ->where('exam_id', $examGroup->exam->id)
+            ->where('exam_session_id', $examGroup->exam_session_id);
         $allQuestions = (clone $baseAnswers)->orderBy('question_order')->get();
         $answered = (clone $baseAnswers)->where(fn ($query) => $query->where('answer', '!=', 0)->orWhereNotNull('answer_value'))->count();
         $active = (clone $baseAnswers)->where('question_order', $page)->first();
@@ -186,14 +238,18 @@ class ExaminationController extends Controller
 
     public function answerQuestion(Request $request)
     {
-        $grade = Grade::where('exam_id', $request->exam_id)
-            ->where('exam_session_id', $request->exam_session_id)
-            ->where('student_id', auth()->guard('student')->user()->id)->firstOrFail();
-        $question = Question::findOrFail($request->question_id);
+        $studentId = auth()->guard('student')->user()->id;
+        $examGroup = ExamGroup::with('exam')->whereKey($request->integer('exam_group_id'))
+            ->where('student_id', $studentId)->firstOrFail();
+        $grade = Grade::where('exam_id', $examGroup->exam_id)
+            ->where('exam_session_id', $examGroup->exam_session_id)
+            ->where('student_id', $studentId)->firstOrFail();
+        abort_if($grade->end_time || $grade->is_locked, 403, 'Ujian sudah selesai.');
+        $question = Question::where('exam_id', $examGroup->exam_id)->findOrFail($request->integer('question_id'));
         $submitted = $request->input('answer_value', $request->input('answer'));
-        $answer = Answer::where('exam_id', $request->exam_id)
-            ->where('exam_session_id', $request->exam_session_id)
-            ->where('student_id', auth()->guard('student')->user()->id)
+        $answer = Answer::where('exam_id', $examGroup->exam_id)
+            ->where('exam_session_id', $examGroup->exam_session_id)
+            ->where('student_id', $studentId)
             ->where('question_id', $question->id)->firstOrFail();
 
         $answer->answer = is_numeric($submitted) ? (int) $submitted : 0;
@@ -201,6 +257,7 @@ class ExaminationController extends Controller
         $isCorrect = $this->isCorrect($question, $submitted);
         $answer->is_correct = $isCorrect ? 'Y' : 'N';
         $answer->score = $question->type === 'essay' ? 0 : ($isCorrect ? $question->max_score : 0);
+        $answer->is_reviewed = $question->type !== 'essay';
         $answer->save();
 
         return back();
@@ -209,9 +266,11 @@ class ExaminationController extends Controller
     public function endExam(Request $request)
     {
         $studentId = auth()->guard('student')->user()->id;
-        $questions = Question::where('exam_id', $request->exam_id)->get();
-        $answers = Answer::with('question')->where('exam_id', $request->exam_id)
-            ->where('exam_session_id', $request->exam_session_id)
+        $examGroup = ExamGroup::whereKey($request->integer('exam_group_id'))
+            ->where('student_id', $studentId)->firstOrFail();
+        $questions = Question::where('exam_id', $examGroup->exam_id)->get();
+        $answers = Answer::with('question')->where('exam_id', $examGroup->exam_id)
+            ->where('exam_session_id', $examGroup->exam_session_id)
             ->where('student_id', $studentId)->get();
         $correct = $answers->where('is_correct', 'Y');
         $totalScore = (float) $questions->sum('max_score');
@@ -220,7 +279,7 @@ class ExaminationController extends Controller
             : ($answer->is_correct === 'Y' ? (float) ($answer->question?->max_score ?? 0) : 0));
         $gradeValue = $totalScore > 0 ? round($earnedScore / $totalScore * 100, 2) : 0;
 
-        Grade::where('exam_id', $request->exam_id)->where('exam_session_id', $request->exam_session_id)
+        Grade::where('exam_id', $examGroup->exam_id)->where('exam_session_id', $examGroup->exam_session_id)
             ->where('student_id', $studentId)->update([
                 'end_time' => Carbon::now(),
                 'total_correct' => $correct->count(),
@@ -234,6 +293,11 @@ class ExaminationController extends Controller
     {
         $examGroup = $this->examGroup($examGroupId);
         if (!$examGroup) return redirect()->route('student.dashboard');
+
+        $grade = $this->grade($examGroup);
+        if (!$grade->isReleased()) {
+            return redirect()->route('student.dashboard')->with('info', 'Hasil ujian akan tampil setelah selesai dikoreksi oleh guru.');
+        }
 
         $answers = Answer::where('exam_id', $examGroup->exam_id)
             ->where('exam_session_id', $examGroup->exam_session_id)
@@ -272,7 +336,7 @@ class ExaminationController extends Controller
 
         return Inertia::render('Student/Exams/Result', [
             'exam_group' => $examGroup,
-            'grade' => $this->grade($examGroup),
+            'grade' => $grade,
             'answer_details' => $answerDetails,
         ]);
     }
@@ -304,6 +368,11 @@ class ExaminationController extends Controller
     {
         return ExamGroup::with('exam.lesson', 'exam_session', 'student.classroom')
             ->where('student_id', auth()->guard('student')->user()->id)->where('id', $id)->first();
+    }
+
+    private function tokenSessionKey(int $groupId): string
+    {
+        return 'student_exam_token_' . $groupId;
     }
 
     private function grade(ExamGroup $examGroup): Grade

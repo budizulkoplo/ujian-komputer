@@ -7,6 +7,7 @@ use App\Http\Controllers\ExamController;
 use App\Http\Controllers\ExamGroupController;
 use App\Http\Controllers\ExaminationController;
 use App\Http\Controllers\ExamSessionController;
+use App\Http\Controllers\ExamReportController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\MonitoringController;
 use App\Http\Controllers\PermissionController;
@@ -57,23 +58,26 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
     // dashboard route
     Route::get('/', DashboardController::class)->name('dashboard');
     // permissions route
-    Route::get('/permissions', [PermissionController::class, 'index'])->name('permissions.index');
+    Route::get('/permissions', [PermissionController::class, 'index'])->middleware('admin.only')->name('permissions.index');
     // roles route
-    Route::resource('/roles', RoleController::class)->except(['create', 'edit', 'show']);
+    Route::resource('/roles', RoleController::class)->except(['create', 'edit', 'show'])->middleware('admin.only');
     // users route
-    Route::resource('/users', UserController::class)->except('show');
+    Route::resource('/users', UserController::class)->except('show')->middleware('admin.only');
 
 
     // Features
-    Route::resource('classrooms', ClassroomController::class);
-    Route::get('/students/template', [StudentController::class, 'downloadTemplate'])->name('students.template');
-    Route::post('/students/import', [StudentController::class, 'import'])->name('students.import');
-    Route::resource('students', StudentController::class);
-    Route::resource('teachers', TeacherController::class)->except(['create', 'edit', 'show']);
+    Route::resource('classrooms', ClassroomController::class)->middleware('admin.only');
+    Route::get('/students/template', [StudentController::class, 'downloadTemplate'])->middleware('admin.only')->name('students.template');
+    Route::post('/students/import', [StudentController::class, 'import'])->middleware('admin.only')->name('students.import');
+    Route::resource('students', StudentController::class)->middleware('admin.only');
+    Route::get('/teachers/template', [TeacherController::class, 'downloadTemplate'])->middleware('admin.only')->name('teachers.template');
+    Route::get('/teachers/export', [TeacherController::class, 'export'])->middleware('admin.only')->name('teachers.export');
+    Route::post('/teachers/import', [TeacherController::class, 'import'])->middleware('admin.only')->name('teachers.import');
+    Route::resource('teachers', TeacherController::class)->except(['create', 'edit', 'show'])->middleware('admin.only');
     Route::resource('lessons', LessonController::class);
     Route::resource('exams', ExamController::class);
-    Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
-    Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
+    Route::get('/settings', [SettingController::class, 'index'])->middleware('admin.only')->name('settings.index');
+    Route::post('/settings', [SettingController::class, 'update'])->middleware('admin.only')->name('settings.update');
 
     //custom route for create question exam
     Route::get('/exams/{exam}/questions/create', [QuestionController::class, 'create'])->name('exams.questions.create');
@@ -89,8 +93,15 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
     //custom route for destroy question exam
     Route::delete('/exams/{exam}/questions/{question}/destroy', [QuestionController::class, 'destroy'])->name('exams.questions.destroy');
 
+    Route::post('/exam_sessions/{exam_session}/reopen-token', [ExamSessionController::class, 'reopenToken'])->name('exam_sessions.reopen_token');
     //route resource exam_sessions
     Route::resource('/exam_sessions', ExamSessionController::class);
+    Route::get('/exam-reports', [ExamReportController::class, 'index'])->name('exam_reports.index');
+    Route::post('/exam-sessions/{exam_session}/report', [ExamReportController::class, 'store'])->name('exam_reports.store');
+    Route::put('/exam-reports/{exam_report}', [ExamReportController::class, 'update'])->name('exam_reports.update');
+    Route::post('/exam-reports/{exam_report}/reopen-token', [ExamReportController::class, 'reopenToken'])->name('exam_reports.reopen_token');
+    Route::get('/exam-reports/{exam_report}/print', [ExamReportController::class, 'print'])->name('exam_reports.print');
+    Route::get('/exam-reports/{exam_report}/pdf', [ExamReportController::class, 'pdf'])->name('exam_reports.pdf');
 
     //custom route for enrolle create
     Route::get('/exam_sessions/{exam_session}/group/create', [ExamGroupController::class, 'create'])->name('exam_sessions.group.create');
@@ -125,6 +136,7 @@ Route::prefix('student')->group(function () {
 
         //route exam confirmation
         Route::get('/examination-confirmation/{id}', [ExaminationController::class, 'confirmation'])->name('student.examination.confirmation');
+        Route::post('/examination-token', [ExaminationController::class, 'verifyToken'])->name('student.examination.token');
 
         //route exam start
         Route::get('/examination-start/{id}', [ExaminationController::class, 'startExam'])->name('student.examination.startExam');

@@ -30,10 +30,13 @@ class Answer extends Model
         'answer_value',
         'is_correct',
         'score',
+        'is_reviewed',
+        'teacher_comment',
     ];
 
     protected $casts = [
         'score' => 'decimal:2',
+        'is_reviewed' => 'boolean',
     ];
 
     /**

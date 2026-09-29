@@ -24,10 +24,12 @@ class DashboardController extends Controller
         $exams = (clone $accessibleExams)->count();
 
         // Total Students
-        $students = Student::query()->count();
+        $students = Student::query()
+            ->when($user?->isTeacher(), fn ($query) => $query->whereIn('classroom_id', $user->teachingClassroomIds()))
+            ->count();
 
         // Total Guru
-        $teachers = Teacher::query()->count();
+        $teachers = $user?->isTeacher() ? 0 : Teacher::query()->count();
 
         // Total Mata Pelajaran
         $lessonsQuery = Lesson::query();
@@ -40,7 +42,7 @@ class DashboardController extends Controller
             ->latest()
             ->take(5)
             ->get();
-        $recentTeachers = Teacher::with('user')->latest()->take(5)->get();
+        $recentTeachers = $user?->isTeacher() ? collect() : Teacher::with('user')->latest()->take(5)->get();
 
         return Inertia::render('Dashboard/Index', [
             'exams' => $exams,

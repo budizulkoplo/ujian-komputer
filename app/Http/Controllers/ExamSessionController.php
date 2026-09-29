@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Exam;
 use App\Models\ExamSession;
+use App\Services\ExamParticipantSyncService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -15,10 +17,10 @@ class ExamSessionController extends Controller
     public function index()
     {
         // get all exams
-        $exams = Exam::query()->with('classroom', 'lesson')->get();
+        $exams = $this->accessibleExams()->with('classroom', 'lesson')->get();
 
         //get exam_sessions
-        $exam_sessions = ExamSession::query()->when(request()->search, function ($exam_sessions) {
+        $exam_sessions = ExamSession::whereIn('exam_id', $this->accessibleExams()->select('id'))->when(request()->search, function ($exam_sessions) {
             $exam_sessions = $exam_sessions->where('title', 'like', '%' . request()->search . '%');
         })->with('exam.classroom', 'exam.lesson', 'exam_groups')->latest()->paginate(5);
 
@@ -38,7 +40,7 @@ class ExamSessionController extends Controller
     public function create()
     {
         //get exams
-        $exams = Exam::all();
+        $exams = $this->accessibleExams()->get();
 
         //render with inertia
         return Inertia::render('Dashboard/ExamSessions/Create', [
@@ -58,11 +60,12 @@ class ExamSessionController extends Controller
             'start_time' => 'required',
             'end_time' => 'required',
         ]);
+        $exam = $this->accessibleExams()->findOrFail($request->integer('exam_id'));
 
         //create exam_session
         $examSession = ExamSession::create([
             'title' => $request->title,
-            'exam_id' => $request->exam_id,
+            'exam_id' => $exam->id,
             'start_time' => date('Y-m-d H:i:s', strtotime($request->start_time)),
             'end_time' => date('Y-m-d H:i:s', strtotime($request->end_time)),
         ]);
@@ -80,6 +83,7 @@ class ExamSessionController extends Controller
     {
         //get exam_session
         $exam_session = ExamSession::with('exam.classroom', 'exam.lesson')->findOrFail($id);
+        $this->ensureAccess($exam_session);
 
         $this->syncParticipants($exam_session);
 
@@ -99,9 +103,10 @@ class ExamSessionController extends Controller
     {
         //get exam_session
         $exam_session = ExamSession::findOrFail($id);
+        $this->ensureAccess($exam_session);
 
         //get exams
-        $exams = Exam::all();
+        $exams = $this->accessibleExams()->get();
 
         //render with inertia
         return Inertia::render('Admin/ExamSessions/Edit', [
@@ -115,6 +120,7 @@ class ExamSessionController extends Controller
      */
     public function update(Request $request, ExamSession $exam_session)
     {
+        $this->ensureAccess($exam_session);
         //validate request
         $request->validate([
             'title' => 'required',
@@ -123,10 +129,12 @@ class ExamSessionController extends Controller
             'end_time' => 'required',
         ]);
 
+        $exam = $this->accessibleExams()->findOrFail($request->integer('exam_id'));
+
         //update exam_session
         $exam_session->update([
             'title' => $request->title,
-            'exam_id' => $request->exam_id,
+            'exam_id' => $exam->id,
             'start_time' => date('Y-m-d H:i:s', strtotime($request->start_time)),
             'end_time' => date('Y-m-d H:i:s', strtotime($request->end_time)),
         ]);
@@ -137,6 +145,24 @@ class ExamSessionController extends Controller
         return to_route('exam_sessions.index');
     }
 
+    public function reopenToken(Request $request, ExamSession $exam_session)
+    {
+        $this->ensureAccess($exam_session);
+        $data = $request->validate([
+            'reopen_until' => ['required', 'date'],
+        ]);
+        $until = Carbon::parse($data['reopen_until']);
+        abort_if(!$until->isFuture(), 422, 'Waktu tutup token susulan harus setelah waktu sekarang.');
+
+        $exam_session->forceFill([
+            'token' => ExamSession::generateToken(),
+            'token_closed_at' => null,
+            'end_time' => $until,
+        ])->save();
+
+        return back()->with('success', 'Token susulan berhasil dibuka dengan kode baru: ' . $exam_session->token);
+    }
+
     /**
      * Remove the specified resource from storage.
      */
@@ -144,6 +170,7 @@ class ExamSessionController extends Controller
     {
         //get exam_session
         $exam_session = ExamSession::findOrFail($id);
+        $this->ensureAccess($exam_session);
 
         //delete exam_session
         $exam_session->delete();
@@ -154,15 +181,16 @@ class ExamSessionController extends Controller
 
     private function syncParticipants(ExamSession $examSession): void
     {
-        $examSession->loadMissing('exam');
-        $studentIds = \App\Models\Student::where('classroom_id', $examSession->exam->classroom_id)->pluck('id');
+        app(ExamParticipantSyncService::class)->syncSession($examSession);
+    }
 
-        foreach ($studentIds as $studentId) {
-            \App\Models\ExamGroup::firstOrCreate([
-                'exam_id' => $examSession->exam_id,
-                'exam_session_id' => $examSession->id,
-                'student_id' => $studentId,
-            ]);
-        }
+    private function accessibleExams()
+    {
+        return Exam::accessibleBy(auth()->user());
+    }
+
+    private function ensureAccess(ExamSession $examSession): void
+    {
+        abort_unless($this->accessibleExams()->whereKey($examSession->exam_id)->exists(), 403);
     }
 }

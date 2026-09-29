@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { IconActivity, IconBooks, IconChartBarPopular, IconChartInfographic, IconCirclePlus, IconClockHour6, IconFileCertificate, IconFileDescription, IconLayout2, IconSchool, IconSettings, IconTable, IconUserBolt, IconUserShield, IconUserSquare, IconUsers } from '@tabler/icons-react';
+import { IconActivity, IconBooks, IconChartBarPopular, IconChartInfographic, IconCirclePlus, IconClockHour6, IconFileCertificate, IconFileDescription, IconFileDescription as IconReport, IconLayout2, IconSchool, IconSettings, IconTable, IconUserBolt, IconUserShield, IconUserSquare, IconUsers } from '@tabler/icons-react';
 import hasAnyPermission from './Permission';
 import React from 'react'
 
@@ -80,7 +80,7 @@ export default function Menu() {
                             href: route('exam_sessions.index'),
                             icon: <IconClockHour6 size={20} strokeWidth={1.5} className="text-purple-500" />,
                             active: url.startsWith('/exam_sessions') ? true : false,
-                            permissions: !isTeacher && hasAnyPermission(['users-create']),
+                            permissions: isTeacher || hasAnyPermission(['users-create']),
                         },
                     ]
                 },
@@ -96,6 +96,13 @@ export default function Menu() {
                     href: route('corrections.index'),
                     active: url.startsWith('/dashboard/corrections'),
                     icon: <IconChartInfographic size={20} strokeWidth={1.5} className="text-rose-500" />,
+                    permissions: true,
+                },
+                {
+                    title: 'Berita Acara',
+                    href: route('exam_reports.index'),
+                    active: url.startsWith('/dashboard/exam-reports'),
+                    icon: <IconReport size={20} strokeWidth={1.5} className="text-emerald-500" />,
                     permissions: true,
                 },
                 {

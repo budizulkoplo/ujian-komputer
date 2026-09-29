@@ -20,7 +20,29 @@ class ExamSession extends Model
         'title',
         'start_time',
         'end_time',
+        'token',
+        'token_closed_at',
     ];
+
+    protected $casts = [
+        'token_closed_at' => 'datetime',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (ExamSession $session) {
+            $session->token ??= static::generateToken();
+        });
+    }
+
+    public static function generateToken(): string
+    {
+        do {
+            $token = chr(random_int(65, 90)) . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        } while (static::withTrashed()->where('token', $token)->exists());
+
+        return $token;
+    }
 
     /**
      * exam_groups
@@ -40,5 +62,10 @@ class ExamSession extends Model
     public function exam()
     {
         return $this->belongsTo(Exam::class);
+    }
+
+    public function exam_report()
+    {
+        return $this->hasOne(ExamReport::class);
     }
 }
