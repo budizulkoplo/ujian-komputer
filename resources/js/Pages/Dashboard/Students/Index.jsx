@@ -10,6 +10,7 @@ import { Head, useForm, usePage } from '@inertiajs/react';
 import { IconBox, IconChartBar, IconCirclePlus, IconDatabaseOff, IconPackage, IconPencilCheck, IconPencilCog, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
 import Input from '@/Components/Dashboard/Input';
 import InputSelect from '@/Components/Dashboard/InputSelect';
+import Pagination from '@/Components/Dashboard/Pagination';
 import { useRef, useState } from 'react';
 
 export default function Index({ students, classrooms }) {
@@ -311,6 +312,7 @@ export default function Index({ students, classrooms }) {
                     </Table.Tbody>
                 </Table>
             </Table.Card>
+            {students.links && <Pagination links={students.links} />}
         </>
     );
 }
