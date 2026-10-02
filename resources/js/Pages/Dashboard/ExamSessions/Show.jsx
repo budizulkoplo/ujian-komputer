@@ -8,6 +8,7 @@ import { IconChevronsLeft, IconTrash, IconUsers } from '@tabler/icons-react';
 import Input from '@/Components/Dashboard/Input';
 import InputSelect from '@/Components/Dashboard/InputSelect';
 import Textarea from '@/Components/Dashboard/TextArea';
+import Pagination from '@/Components/Dashboard/Pagination';
 
 export default function Show({ exam_session }) {
     const { errors } = usePage().props;
@@ -25,12 +26,12 @@ export default function Show({ exam_session }) {
                             href={route('exam_sessions.index')}
                         />
                     </div>
-                    {/* <div className='w-full md:w-4/12'>
+                    <div className='w-full md:w-4/12'>
                         <Search
-                            url={route('exams.index')}
-                            placeholder={'Cari data berdasarkan nama'}
+                            url={route('exam_sessions.show', exam_session.id)}
+                            placeholder={'Cari nama atau NISN peserta'}
                         />
-                    </div> */}
+                    </div>
                 </div>
             </div>
             <div className="mb-5">
@@ -124,6 +125,7 @@ export default function Show({ exam_session }) {
                     </Table.Tbody>
                 </Table>
             </Table.Card>
+            {exam_session.exam_groups.links && <Pagination links={exam_session.exam_groups.links} />}
         </>
     );
 }

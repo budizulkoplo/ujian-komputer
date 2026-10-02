@@ -8,6 +8,8 @@ import Button from '@/Components/Dashboard/Button'
 import Checkbox from '@/Components/Dashboard/Checkbox'
 import toast from 'react-hot-toast'
 import Table from '@/Components/Dashboard/Table'
+import Search from '@/Components/Dashboard/Search'
+import Pagination from '@/Components/Dashboard/Pagination'
 export default function Create(students) {
     // destruct props roles from use page
     const { roles } = usePage().props;
@@ -32,6 +34,9 @@ export default function Create(students) {
     return (
         <>
             <Head title={'Tambah Peserta Ujian'} />
+            <div className="mb-4 flex justify-end">
+                <div className="w-full md:w-4/12"><Search url={route('exam_sessions.group.create', students.exam_session.id)} placeholder="Cari nama atau NISN siswa" /></div>
+            </div>
             <Card
                 title={'Tambah Peserta Ujian'}
                 icon={<IconUsersPlus size={20} strokeWidth={1.5} />}
@@ -51,12 +56,12 @@ export default function Create(students) {
                         <tr>
                             <Table.Th className={'w-10'}>
                                 <Checkbox
-                                    checked={data.student_id.length === students.students.length}
+                                    checked={students.students.data.length > 0 && students.students.data.every((student) => data.student_id.includes(student.id))}
                                     onChange={(e) => {
                                         if (e.target.checked) {
-                                            setData('student_id', students.students.map((student) => student.id));
+                                            setData('student_id', [...new Set([...data.student_id, ...students.students.data.map((student) => student.id)])]);
                                         } else {
-                                            setData('student_id', []);
+                                            setData('student_id', data.student_id.filter((id) => !students.students.data.some((student) => student.id === id)));
                                         }
                                     }}
                                 />
@@ -67,7 +72,7 @@ export default function Create(students) {
                         </tr>
                     </Table.Thead>
                     <Table.Tbody>
-                        {students.students.map((student, index) => (
+                        {students.students.data.map((student, index) => (
                             <tr key={index}>
                                 <Table.Td className={'w-10'}>
                                     <Checkbox
@@ -89,6 +94,7 @@ export default function Create(students) {
                     </Table.Tbody>
                 </Table>
             </Card>
+            {students.students.links && <Pagination links={students.students.links} />}
         </>
     )
 }

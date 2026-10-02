@@ -87,8 +87,19 @@ class ExamSessionController extends Controller
 
         $this->syncParticipants($exam_session);
 
-        //get relation exam_groups with pagination
-        $exam_session->setRelation('exam_groups', $exam_session->exam_groups()->with('student.classroom')->paginate(5));
+        // Daftar peserta dipaginasi dan dapat dicari berdasarkan nama atau NISN.
+        $examGroups = $exam_session->exam_groups()
+            ->with('student.classroom')
+            ->when(request('search'), function ($query) {
+                $search = request('search');
+                $query->whereHas('student', fn ($student) => $student
+                    ->where('name', 'like', "%{$search}%")
+                    ->orWhere('nisn', 'like', "%{$search}%"));
+            })
+            ->latest('id')
+            ->paginate(10)
+            ->withQueryString();
+        $exam_session->setRelation('exam_groups', $examGroups);
 
         //render with inertia
         return Inertia::render('Dashboard/ExamSessions/Show', [

@@ -22,7 +22,7 @@ class ExamGroupController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(ExamSession $exam_session)
+    public function create(Request $request, ExamSession $exam_session)
     {
         $this->ensureAccess($exam_session);
         //get exams
@@ -32,7 +32,20 @@ class ExamGroupController extends Controller
         $students_enrolled = ExamGroup::where('exam_id', $exam->id)->where('exam_session_id', $exam_session->id)->pluck('student_id')->all();
 
         //get students
-        $students = Student::query()->with('classroom')->where('classroom_id', $exam->classroom_id)->whereNotIn('id', $students_enrolled)->get();
+        $students = Student::query()
+            ->with('classroom')
+            ->where('classroom_id', $exam->classroom_id)
+            ->whereNotIn('id', $students_enrolled)
+            ->when($request->search, function ($query) use ($request) {
+                $search = $request->search;
+                $query->where(function ($student) use ($search) {
+                    $student->where('name', 'like', "%{$search}%")
+                        ->orWhere('nisn', 'like', "%{$search}%");
+                });
+            })
+            ->latest('name')
+            ->paginate(10)
+            ->withQueryString();
 
         //render with inertia
         return Inertia::render('Dashboard/ExamGroups/Create', [
