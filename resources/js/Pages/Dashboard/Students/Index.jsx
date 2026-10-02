@@ -177,6 +177,8 @@ export default function Index({ students, classrooms }) {
                         <label className="block text-sm text-gray-600">NISN</label>
                         <Input
                             type="text"
+                            inputMode="numeric"
+                            maxLength={19}
                             value={data.nisn}
                             onChange={(e) => setData('nisn', e.target.value)}
                             className="w-full px-3 py-2 border rounded"

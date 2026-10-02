@@ -44,10 +44,11 @@ export default function Login({ error, canResetPassword }) {
                     <TextInput
                         id="nisn"
                         type="text"
+                        inputMode="numeric"
+                        maxLength={19}
                         name="nisn"
                         value={data.nisn}
                         className="mt-1 block w-full"
-                        inputMode="numeric"
                         autoComplete="username"
                         isFocused={true}
                         onChange={(e) => setData('nisn', e.target.value)}

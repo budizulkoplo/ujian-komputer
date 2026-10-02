@@ -13,6 +13,7 @@ use App\Services\ExamParticipantSyncService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 
 class StudentController extends Controller
 {
@@ -64,8 +65,8 @@ class StudentController extends Controller
         ]);
 
         try {
-            $rows = IOFactory::load($request->file('file')->getRealPath())
-                ->getActiveSheet()->toArray(null, true, true, true);
+            $sheet = IOFactory::load($request->file('file')->getRealPath())->getActiveSheet();
+            $rows = $sheet->toArray(null, true, true, true);
         } catch (\Throwable $exception) {
             throw ValidationException::withMessages(['file' => 'File Excel tidak dapat dibaca. Gunakan template data siswa.']);
         }
@@ -76,7 +77,13 @@ class StudentController extends Controller
         $seenNisn = [];
 
         foreach (array_slice($rows, 1, null, true) as $rowNumber => $row) {
-            $nisn = trim((string) ($row['A'] ?? ''));
+            $nisnCell = $sheet->getCell("A{$rowNumber}");
+            $nisn = trim((string) ($nisnCell->getFormattedValue() ?: ($row['A'] ?? '')));
+            // Jika Excel menyimpan NISN sebagai angka biasa, nol di depan sudah hilang.
+            // NISN standar terdiri dari 10 digit, sehingga angka tersebut dipulihkan di sini.
+            if ($nisn !== '' && $nisnCell->getDataType() === DataType::TYPE_NUMERIC && preg_match('/^\d{1,9}$/', $nisn)) {
+                $nisn = str_pad($nisn, 10, '0', STR_PAD_LEFT);
+            }
             $name = trim((string) ($row['B'] ?? ''));
             $genderInput = mb_strtolower(trim((string) ($row['C'] ?? '')));
             $classroomName = mb_strtolower(trim((string) ($row['D'] ?? '')));
