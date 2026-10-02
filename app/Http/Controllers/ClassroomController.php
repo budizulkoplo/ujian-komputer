@@ -19,9 +19,6 @@ class ClassroomController extends Controller
             $classrooms = $classrooms->where('title', 'like', '%' . request()->search . '%');
         })->orderBy('title', 'ASC')->latest()->paginate(5)->withQueryString();
 
-        //append query string to pagination links
-        $classrooms->appends([request()->all]);
-
         //render with inertia
         return Inertia::render('Dashboard/Classrooms/Index', [
             'classrooms' => $classrooms,

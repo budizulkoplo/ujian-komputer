@@ -9,6 +9,7 @@ import DashboardLayout from '@/Layouts/DashboardLayout';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { IconBox, IconChartBar, IconCirclePlus, IconDatabaseOff, IconPackage, IconPencilCheck, IconPencilCog, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
 import Input from '@/Components/Dashboard/Input';
+import Pagination from '@/Components/Dashboard/Pagination';
 
 export default function Index({ classrooms }) {
 
@@ -168,6 +169,7 @@ export default function Index({ classrooms }) {
                     </Table.Tbody>
                 </Table>
             </Table.Card>
+            {classrooms.links && <Pagination links={classrooms.links} />}
         </>
     );
 }
