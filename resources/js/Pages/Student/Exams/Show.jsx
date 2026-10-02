@@ -10,6 +10,7 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     const initialAnswer = parseAnswer(activeAnswer?.answer_value, question?.type);
     const [value, setValue] = useState(initialAnswer);
     const [processing, setProcessing] = useState(false);
+    const [finishing, setFinishing] = useState(false);
     const [violationNotice, setViolationNotice] = useState(null);
     const [locked, setLocked] = useState(false);
     const lastViolationAt = useRef(0);
@@ -75,7 +76,19 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
             onSuccess: () => router.visit(route('student.examination.show', { id, page: nextPage })),
         });
     };
-    const finishExam = () => router.post(route('student.examination.endExam'), { exam_id: group.exam.id, exam_session_id: group.exam_session.id, exam_group_id: id });
+    const finishExam = () => {
+        if (finishing || processing) return;
+        setFinishing(true);
+        router.post(route('student.examination.endExam'), {
+            exam_id: group.exam.id,
+            exam_session_id: group.exam_session.id,
+            exam_group_id: id,
+            question_id: question.id,
+            answer_value: value,
+        }, {
+            onFinish: () => setFinishing(false),
+        });
+    };
 
     if (!question) return null;
     return <>
@@ -94,9 +107,9 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
                     {question.image && <img src={`/storage/${question.image}`} alt="Ilustrasi soal" className="question-content mt-5 h-auto max-h-80 max-w-full rounded-xl object-contain" />}
                     {question.video_url && <a href={question.video_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex text-sm font-semibold text-teal-700 hover:underline">Buka video pendukung</a>}
                     <div className="mt-7">{question.type === 'essay' ? <textarea value={value || ''} onChange={(event) => setValue(event.target.value)} rows="7" placeholder="Tulis jawaban Anda..." className="w-full rounded-xl border-slate-300 focus:border-teal-500 focus:ring-teal-500" /> : question.type === 'true_false' ? <ChoiceList options={[['true', 'Benar'], ['false', 'Salah']]} value={value} onChange={setValue} type="radio" /> : question.type === 'multiple_choice_complex' ? <ChoiceList options={displayOptions.map((number) => [String(number), question[`option_${number}`]])} value={Array.isArray(value) ? value : []} onChange={setValue} type="checkbox" /> : question.type === 'ordering' ? <Ordering options={displayOptions.map((number) => [String(number), question[`option_${number}`]])} value={Array.isArray(value) ? value : []} onChange={setValue} /> : <ChoiceList options={displayOptions.map((number) => [String(number), question[`option_${number}`]])} value={value} onChange={setValue} type="radio" />}</div>
-                    <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-slate-100 pt-5"><button type="button" disabled={page <= 1 || processing} onClick={() => saveAndGo(page - 1)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-40"><IconArrowLeft size={17} /> Sebelumnya</button>{page < allQuestions.length ? <button type="button" disabled={processing} onClick={() => saveAndGo(page + 1)} className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-40">Simpan & berikutnya <IconArrowRight size={17} /></button> : <button type="button" onClick={finishExam} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700"><IconSend size={17} /> Selesai ujian</button>}</div>
+                    <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-slate-100 pt-5"><button type="button" disabled={page <= 1 || processing || finishing} onClick={() => saveAndGo(page - 1)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-40"><IconArrowLeft size={17} /> Sebelumnya</button>{page < allQuestions.length ? <button type="button" disabled={processing || finishing} onClick={() => saveAndGo(page + 1)} className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-40">Simpan & berikutnya <IconArrowRight size={17} /></button> : <button type="button" disabled={processing || finishing} onClick={finishExam} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"><IconSend size={17} /> {finishing ? 'Menyimpan...' : 'Selesai ujian'}</button>}</div>
                 </main>
-                <aside className="h-fit rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex items-center justify-between"><h2 className="font-bold text-slate-900">Navigasi soal</h2><span className="text-xs text-slate-500">{answered}/{allQuestions.length} terjawab</span></div><div className="mt-4 grid grid-cols-5 gap-2">{allQuestions.map((answer, index) => <Link key={answer.id} href={route('student.examination.show', { id, page: index + 1 })} className={`flex h-9 items-center justify-center rounded-lg text-xs font-semibold ${answer.question_order === page ? 'bg-teal-700 text-white' : isAnswered(answer) ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-600'}`}>{index + 1}</Link>)}</div><button type="button" onClick={finishExam} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50"><IconFlag size={17} /> Akhiri ujian</button></aside>
+                <aside className="h-fit rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex items-center justify-between"><h2 className="font-bold text-slate-900">Navigasi soal</h2><span className="text-xs text-slate-500">{answered}/{allQuestions.length} terjawab</span></div><div className="mt-4 grid grid-cols-5 gap-2">{allQuestions.map((answer, index) => <Link key={answer.id} href={route('student.examination.show', { id, page: index + 1 })} onClick={(event) => { event.preventDefault(); if (!processing && !finishing && answer.question_order !== page) saveAndGo(index + 1); }} className={`flex h-9 items-center justify-center rounded-lg text-xs font-semibold ${answer.question_order === page ? 'bg-teal-700 text-white' : isAnswered(answer) ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-600'}`}>{index + 1}</Link>)}</div><button type="button" disabled={processing || finishing} onClick={finishExam} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"><IconFlag size={17} /> {finishing ? 'Menyimpan...' : 'Akhiri ujian'}</button></aside>
             </div>
         </div>
     </>;
@@ -108,6 +121,6 @@ function ChoiceList({ options, value, onChange, type }) {
 
 function Ordering({ options, value, onChange }) { return <div className="space-y-3"><p className="text-sm text-slate-500">Klik pilihan sesuai urutan yang benar.</p>{options.map(([key, label]) => { const position = value.indexOf(key); return <button type="button" key={key} onClick={() => onChange(position >= 0 ? value.filter((item) => item !== key) : [...value, key])} className={`flex w-full items-center gap-3 rounded-xl border p-4 text-left ${position >= 0 ? 'border-teal-500 bg-teal-50' : 'border-slate-200'}`}><span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-sm font-bold">{position >= 0 ? position + 1 : ''}</span><span className="question-content prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: label }} /></button>; })}</div>; }
 function parseAnswer(answer, type) { if (!answer) return type === 'multiple_choice_complex' || type === 'ordering' ? [] : ''; if (type === 'multiple_choice_complex' || type === 'ordering') { try { return JSON.parse(answer); } catch { return []; } } return answer; }
-function isAnswered(answer) { return answer.answer !== 0 || answer.answer_value !== null; }
+function isAnswered(answer) { if (answer.answer !== 0) return true; if (answer.answer_value === null || answer.answer_value === '') return false; try { const parsed = JSON.parse(answer.answer_value); return Array.isArray(parsed) ? parsed.length > 0 : true; } catch { return true; } }
 function formatTime(milliseconds) { const seconds = Math.max(0, Math.floor(milliseconds / 1000)); return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; }
 Show.layout = (page) => <StudentLayout>{page}</StudentLayout>;

@@ -252,13 +252,7 @@ class ExaminationController extends Controller
             ->where('student_id', $studentId)
             ->where('question_id', $question->id)->firstOrFail();
 
-        $answer->answer = is_numeric($submitted) ? (int) $submitted : 0;
-        $answer->answer_value = is_array($submitted) ? json_encode(array_values($submitted)) : (string) $submitted;
-        $isCorrect = $this->isCorrect($question, $submitted);
-        $answer->is_correct = $isCorrect ? 'Y' : 'N';
-        $answer->score = $question->type === 'essay' ? 0 : ($isCorrect ? $question->max_score : 0);
-        $answer->is_reviewed = $question->type !== 'essay';
-        $answer->save();
+        $this->persistAnswer($answer, $question, $submitted);
 
         return back();
     }
@@ -266,8 +260,25 @@ class ExaminationController extends Controller
     public function endExam(Request $request)
     {
         $studentId = auth()->guard('student')->user()->id;
-        $examGroup = ExamGroup::whereKey($request->integer('exam_group_id'))
+        $examGroup = ExamGroup::with('exam')->whereKey($request->integer('exam_group_id'))
             ->where('student_id', $studentId)->firstOrFail();
+        $grade = Grade::where('exam_id', $examGroup->exam_id)
+            ->where('exam_session_id', $examGroup->exam_session_id)
+            ->where('student_id', $studentId)->firstOrFail();
+        abort_if($grade->end_time || $grade->is_locked, 403, 'Ujian sudah selesai atau dikunci.');
+
+        // Tombol selesai juga mengirim soal yang sedang terbuka agar jawaban terakhir
+        // tersimpan sebelum nilai dihitung dan ujian ditutup.
+        if ($request->filled('question_id')) {
+            $question = Question::where('exam_id', $examGroup->exam_id)
+                ->findOrFail($request->integer('question_id'));
+            $answer = Answer::where('exam_id', $examGroup->exam_id)
+                ->where('exam_session_id', $examGroup->exam_session_id)
+                ->where('student_id', $studentId)
+                ->where('question_id', $question->id)->firstOrFail();
+            $this->persistAnswer($answer, $question, $request->input('answer_value', $request->input('answer')));
+        }
+
         $questions = Question::where('exam_id', $examGroup->exam_id)->get();
         $answers = Answer::with('question')->where('exam_id', $examGroup->exam_id)
             ->where('exam_session_id', $examGroup->exam_session_id)
@@ -279,12 +290,11 @@ class ExaminationController extends Controller
             : ($answer->is_correct === 'Y' ? (float) ($answer->question?->max_score ?? 0) : 0));
         $gradeValue = $totalScore > 0 ? round($earnedScore / $totalScore * 100, 2) : 0;
 
-        Grade::where('exam_id', $examGroup->exam_id)->where('exam_session_id', $examGroup->exam_session_id)
-            ->where('student_id', $studentId)->update([
-                'end_time' => Carbon::now(),
-                'total_correct' => $correct->count(),
-                'grade' => $gradeValue,
-            ]);
+        $grade->update([
+            'end_time' => Carbon::now(),
+            'total_correct' => $correct->count(),
+            'grade' => $gradeValue,
+        ]);
 
         return redirect()->route('student.examination.resultExam', $request->exam_group_id);
     }
@@ -410,5 +420,18 @@ class ExaminationController extends Controller
             return $submitted === $key;
         }
         return (string) $submitted === (string) $key;
+    }
+
+    private function persistAnswer(Answer $answer, Question $question, mixed $submitted): void
+    {
+        $empty = $submitted === null || $submitted === '' || (is_array($submitted) && count($submitted) === 0);
+        $isCorrect = !$empty && $this->isCorrect($question, $submitted);
+
+        $answer->answer = !$empty && is_numeric($submitted) && !is_array($submitted) ? (int) $submitted : 0;
+        $answer->answer_value = $empty ? null : (is_array($submitted) ? json_encode(array_values($submitted)) : (string) $submitted);
+        $answer->is_correct = $isCorrect ? 'Y' : 'N';
+        $answer->score = $question->type === 'essay' ? 0 : ($isCorrect ? $question->max_score : 0);
+        $answer->is_reviewed = $question->type !== 'essay';
+        $answer->save();
     }
 }
