@@ -27,15 +27,37 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     }, [locked, remaining]);
 
     useEffect(() => {
-        const reportViolation = async () => {
+        // Gunakan URL relatif agar request selalu menuju domain/protokol yang sedang
+        // dipakai siswa. Ini mencegah APP_URL lama (mis. localhost/http) membuat
+        // pencatatan tidak sampai ke server produksi.
+        const violationUrl = (() => {
+            const url = route('student.examination.reportViolation', {}, false);
+            return url.startsWith('/') ? url : `/${url}`;
+        })();
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+        const reportViolation = async (useBeacon = false) => {
             const now = Date.now();
             if (now - lastViolationAt.current < 2000) return;
             lastViolationAt.current = now;
 
+            const formData = new FormData();
+            formData.append('_token', csrfToken);
+            formData.append('exam_group_id', String(id));
+
+            // Beacon tetap mengirim data ketika browser mulai meninggalkan halaman,
+            // saat fetch biasa sering dibatalkan oleh browser.
+            if (useBeacon && navigator.sendBeacon) {
+                const sent = navigator.sendBeacon(violationUrl, formData);
+                if (sent) return;
+            }
+
             try {
-                const response = await fetch(route('student.examination.reportViolation'), {
+                const response = await fetch(violationUrl, {
                     method: 'POST',
                     credentials: 'same-origin',
+                    keepalive: true,
+                    cache: 'no-store',
                     headers: {
                         'Accept': 'application/json',
                         'Content-Type': 'application/json',
@@ -44,20 +66,31 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
                     },
                     body: JSON.stringify({ exam_group_id: id }),
                 });
-                if (!response.ok) return;
+                const contentType = response.headers.get('content-type') || '';
+                if (!response.ok || !contentType.includes('application/json')) {
+                    console.error('Gagal mencatat pelanggaran ujian.', response.status, response.url);
+                    return;
+                }
                 const result = await response.json();
                 setViolationNotice(`Peringatan keamanan ${result.cheat_count}/${result.limit}. Jangan berpindah tab atau aplikasi selama ujian.`);
                 if (result.locked) setLocked(true);
-            } catch {
-                // Pencatatan pelanggaran tidak boleh menghentikan halaman ujian saat koneksi sesaat bermasalah.
+            } catch (error) {
+                // Tetap biarkan siswa melanjutkan saat koneksi sesaat bermasalah,
+                // tetapi tampilkan detail di console agar mudah didiagnosis di server.
+                console.error('Request pencatatan pelanggaran gagal.', error);
             }
         };
         const handleVisibilityChange = () => {
-            if (document.hidden) reportViolation();
+            if (document.hidden) reportViolation(false);
         };
+        const handlePageHide = () => reportViolation(true);
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('pagehide', handlePageHide);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('pagehide', handlePageHide);
+        };
     }, [id]);
 
     const displayOptions = useMemo(() => (answerOrder || []).map(Number).filter((number) => question?.[`option_${number}`]), [answerOrder, question]);

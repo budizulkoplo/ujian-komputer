@@ -199,8 +199,11 @@ class ExaminationController extends Controller
 
     public function reportViolation(Request $request)
     {
+        $data = $request->validate([
+            'exam_group_id' => ['required', 'integer'],
+        ]);
         $studentId = auth()->guard('student')->user()->id;
-        $examGroup = ExamGroup::where('id', $request->integer('exam_group_id'))
+        $examGroup = ExamGroup::whereKey($data['exam_group_id'])
             ->where('student_id', $studentId)
             ->firstOrFail();
 
