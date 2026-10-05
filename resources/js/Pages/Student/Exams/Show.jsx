@@ -3,6 +3,8 @@ import { Head, Link, router } from '@inertiajs/react';
 import { IconArrowLeft, IconArrowRight, IconCheck, IconClock, IconFlag, IconSend } from '@tabler/icons-react';
 import StudentLayout from '@/Layouts/StudentLayout';
 
+const END_EXAM_WINDOW_MS = 10 * 60 * 1000;
+
 export default function Show({ id, page, exam_group: group, all_questions: allQuestions, question_active: activeAnswer, question_answered: answered, answer_order: answerOrder, duration }) {
     const question = activeAnswer?.question;
     const deadline = duration?.expires_at ? new Date(duration.expires_at).getTime() : null;
@@ -14,6 +16,7 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     const [violationNotice, setViolationNotice] = useState(null);
     const [locked, setLocked] = useState(false);
     const lastViolationAt = useRef(0);
+    const canFinishExam = remaining <= END_EXAM_WINDOW_MS;
 
     useEffect(() => {
         const timer = window.setInterval(() => {
@@ -111,6 +114,10 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
     };
     const finishExam = () => {
         if (finishing || processing) return;
+        if (!canFinishExam) {
+            setViolationNotice('Ujian baru dapat diakhiri ketika sisa waktu 10 menit atau kurang.');
+            return;
+        }
         setFinishing(true);
         router.post(route('student.examination.endExam'), {
             exam_id: group.exam.id,
@@ -140,9 +147,9 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
                     {question.image && <img src={`/storage/${question.image}`} alt="Ilustrasi soal" className="question-content mt-5 h-auto max-h-80 max-w-full rounded-xl object-contain" />}
                     {question.video_url && <a href={question.video_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex text-sm font-semibold text-teal-700 hover:underline">Buka video pendukung</a>}
                     <div className="mt-7">{question.type === 'essay' ? <textarea value={value || ''} onChange={(event) => setValue(event.target.value)} rows="7" placeholder="Tulis jawaban Anda..." className="w-full rounded-xl border-slate-300 focus:border-teal-500 focus:ring-teal-500" /> : question.type === 'true_false' ? <ChoiceList options={[['true', 'Benar'], ['false', 'Salah']]} value={value} onChange={setValue} type="radio" /> : question.type === 'multiple_choice_complex' ? <ChoiceList options={displayOptions.map((number) => [String(number), question[`option_${number}`]])} value={Array.isArray(value) ? value : []} onChange={setValue} type="checkbox" /> : question.type === 'ordering' ? <Ordering options={displayOptions.map((number) => [String(number), question[`option_${number}`]])} value={Array.isArray(value) ? value : []} onChange={setValue} /> : <ChoiceList options={displayOptions.map((number) => [String(number), question[`option_${number}`]])} value={value} onChange={setValue} type="radio" />}</div>
-                    <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-slate-100 pt-5"><button type="button" disabled={page <= 1 || processing || finishing} onClick={() => saveAndGo(page - 1)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-40"><IconArrowLeft size={17} /> Sebelumnya</button>{page < allQuestions.length ? <button type="button" disabled={processing || finishing} onClick={() => saveAndGo(page + 1)} className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-40">Simpan & berikutnya <IconArrowRight size={17} /></button> : <button type="button" disabled={processing || finishing} onClick={finishExam} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"><IconSend size={17} /> {finishing ? 'Menyimpan...' : 'Selesai ujian'}</button>}</div>
+                    <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-slate-100 pt-5"><button type="button" disabled={page <= 1 || processing || finishing} onClick={() => saveAndGo(page - 1)} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-40"><IconArrowLeft size={17} /> Sebelumnya</button>{page < allQuestions.length ? <button type="button" disabled={processing || finishing} onClick={() => saveAndGo(page + 1)} className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-40">Simpan & berikutnya <IconArrowRight size={17} /></button> : <button type="button" disabled={processing || finishing || !canFinishExam} onClick={finishExam} title={!canFinishExam ? 'Tombol aktif saat sisa waktu 10 menit atau kurang' : 'Akhiri ujian'} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"><IconSend size={17} /> {finishing ? 'Menyimpan...' : 'Selesai ujian'}</button>}</div>
                 </main>
-                <aside className="h-fit rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex items-center justify-between"><h2 className="font-bold text-slate-900">Navigasi soal</h2><span className="text-xs text-slate-500">{answered}/{allQuestions.length} terjawab</span></div><div className="mt-4 grid grid-cols-5 gap-2">{allQuestions.map((answer, index) => <Link key={answer.id} href={route('student.examination.show', { id, page: index + 1 })} onClick={(event) => { event.preventDefault(); if (!processing && !finishing && answer.question_order !== page) saveAndGo(index + 1); }} className={`flex h-9 items-center justify-center rounded-lg text-xs font-semibold ${answer.question_order === page ? 'bg-teal-700 text-white' : isAnswered(answer) ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-600'}`}>{index + 1}</Link>)}</div><button type="button" disabled={processing || finishing} onClick={finishExam} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"><IconFlag size={17} /> {finishing ? 'Menyimpan...' : 'Akhiri ujian'}</button></aside>
+                <aside className="h-fit rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex items-center justify-between"><h2 className="font-bold text-slate-900">Navigasi soal</h2><span className="text-xs text-slate-500">{answered}/{allQuestions.length} terjawab</span></div><div className="mt-4 grid grid-cols-5 gap-2">{allQuestions.map((answer, index) => <Link key={answer.id} href={route('student.examination.show', { id, page: index + 1 })} onClick={(event) => { event.preventDefault(); if (!processing && !finishing && answer.question_order !== page) saveAndGo(index + 1); }} className={`flex h-9 items-center justify-center rounded-lg text-xs font-semibold ${answer.question_order === page ? 'bg-teal-700 text-white' : isAnswered(answer) ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-600'}`}>{index + 1}</Link>)}</div><button type="button" disabled={processing || finishing || !canFinishExam} onClick={finishExam} title={!canFinishExam ? 'Tombol aktif saat sisa waktu 10 menit atau kurang' : 'Akhiri ujian'} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"><IconFlag size={17} /> {finishing ? 'Menyimpan...' : 'Akhiri ujian'}</button></aside>
             </div>
         </div>
     </>;

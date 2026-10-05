@@ -14,6 +14,8 @@ use Inertia\Inertia;
 
 class ExaminationController extends Controller
 {
+    private const END_EXAM_WINDOW_MS = 10 * 60 * 1000;
+
     public function index()
     {
         $student = auth()->guard('student')->user()->loadMissing('classroom');
@@ -269,6 +271,15 @@ class ExaminationController extends Controller
             ->where('exam_session_id', $examGroup->exam_session_id)
             ->where('student_id', $studentId)->firstOrFail();
         abort_if($grade->end_time || $grade->is_locked, 403, 'Ujian sudah selesai atau dikunci.');
+
+        // Peserta baru boleh mengakhiri ujian secara manual ketika sisa waktu
+        // sudah 10 menit atau kurang. Jika waktu habis, proses otomatis tetap
+        // dapat menyelesaikan ujian karena sisa waktunya sudah 0.
+        if ($this->remainingDuration($grade) > self::END_EXAM_WINDOW_MS) {
+            return back()->withErrors([
+                'exam' => 'Ujian baru dapat diakhiri ketika sisa waktu 10 menit atau kurang.',
+            ]);
+        }
 
         // Tombol selesai juga mengirim soal yang sedang terbuka agar jawaban terakhir
         // tersimpan sebelum nilai dihitung dan ujian ditutup.
