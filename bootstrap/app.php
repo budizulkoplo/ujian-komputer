@@ -17,6 +17,14 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
+        // Endpoint ini dipanggil oleh visibilitychange/pagehide dan sendBeacon.
+        // Pada kondisi halaman ditinggalkan, browser dapat mengirim request
+        // tanpa token form terbaru. Endpoint tetap aman karena berada di balik
+        // middleware student dan controller memeriksa kepemilikan exam group.
+        $middleware->validateCsrfTokens(except: [
+            'student/examination-violation',
+        ]);
+
         // Trust Cloudflare proxy
         $middleware->trustProxies(
             at: '*'
