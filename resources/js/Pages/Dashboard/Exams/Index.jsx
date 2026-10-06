@@ -3,6 +3,7 @@ import Button from '@/Components/Dashboard/Button';
 import Card from '@/Components/Dashboard/Card';
 import Search from '@/Components/Dashboard/Search';
 import Table from '@/Components/Dashboard/Table';
+import Pagination from '@/Components/Dashboard/Pagination';
 import Widget from '@/Components/Dashboard/Widget';
 import Modal from '@/Components/Dashboard/Modal';
 import DashboardLayout from '@/Layouts/DashboardLayout';
@@ -377,7 +378,7 @@ export default function Index({ lessons, classrooms, exams }) {
                                     </Table.Td>
                                 </tr>
                             )) :
-                            <Table.Empty colSpan={6} message={
+                            <Table.Empty colSpan={7} message={
                                 <>
                                     <div className='flex justify-center items-center text-center mb-2'>
                                         <IconDatabaseOff size={24} strokeWidth={1.5} className='text-gray-500 dark:text-white' />
@@ -389,6 +390,7 @@ export default function Index({ lessons, classrooms, exams }) {
                     </Table.Tbody>
                 </Table>
             </Table.Card>
+            {exams.links && <Pagination links={exams.links} />}
         </>
     );
 }

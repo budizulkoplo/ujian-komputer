@@ -18,10 +18,7 @@ class ExamController extends Controller
     {
         $exams = $this->accessibleExams()->when(request()->search, function ($exams) {
             $exams = $exams->where('title', 'like', '%' . request()->search . '%');
-        })->with('lesson', 'classroom', 'questions')->latest()->paginate(5);
-
-        //append query string to pagination links
-        $exams->appends(['q' => request()->search]);
+        })->with('lesson', 'classroom', 'questions')->latest()->paginate(10)->withQueryString();
 
         $lessons = $this->accessibleLessons()->get();
 
