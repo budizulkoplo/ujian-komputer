@@ -7,7 +7,10 @@ use App\Models\Classroom;
 use App\Models\Exam;
 use App\Models\Lesson;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ExamController extends Controller
 {
@@ -23,6 +26,15 @@ class ExamController extends Controller
         $lessons = $this->accessibleLessons()->get();
 
         $classrooms = $this->accessibleClassrooms()->get();
+        $exams->getCollection()->each(function (Exam $exam) use ($classrooms) {
+            $sourceGrade = $this->classroomGrade($exam->classroom->title);
+            $exam->setAttribute('copy_classrooms', $classrooms->filter(function (Classroom $classroom) use ($exam, $sourceGrade) {
+                return $classroom->id !== $exam->classroom_id
+                    && $sourceGrade !== null
+                    && $this->classroomGrade($classroom->title) === $sourceGrade
+                    && $this->canTeachPair((int) $exam->lesson_id, (int) $classroom->id);
+            })->values());
+        });
 
         //render with inertia
         return Inertia::render('Dashboard/Exams/Index', [
@@ -71,6 +83,38 @@ class ExamController extends Controller
         ]);
 
         //redirect
+        return back();
+    }
+
+    public function copy(Request $request, Exam $exam)
+    {
+        $this->ensureExamAccess($exam);
+        $request->validate([
+            'classroom_id' => ['required', 'integer', Rule::exists('classrooms', 'id')->whereNull('deleted_at')],
+        ]);
+
+        $classroom = Classroom::findOrFail($request->integer('classroom_id'));
+        $sourceGrade = $this->classroomGrade($exam->classroom()->value('title'));
+        if ($sourceGrade === null || $this->classroomGrade($classroom->title) !== $sourceGrade) {
+            throw ValidationException::withMessages([
+                'classroom_id' => 'Ujian hanya dapat disalin ke kelas pada tingkatan yang sama.',
+            ]);
+        }
+
+        abort_unless($this->canTeachPair((int) $exam->lesson_id, (int) $classroom->id), 403);
+
+        DB::transaction(function () use ($exam, $classroom) {
+            $copy = $exam->replicate();
+            $copy->classroom_id = $classroom->id;
+            $copy->save();
+
+            foreach ($exam->questions as $question) {
+                $questionCopy = $question->replicate();
+                $questionCopy->exam_id = $copy->id;
+                $questionCopy->save();
+            }
+        });
+
         return back();
     }
 
@@ -185,5 +229,14 @@ class ExamController extends Controller
     private function ensureExamAccess(Exam $exam): void
     {
         abort_unless($this->accessibleExams()->whereKey($exam->id)->exists(), 403);
+    }
+
+    private function classroomGrade(string $title): ?string
+    {
+        if (!preg_match('/^\s*(?:kelas\s*)?(\d{1,2}|[ivx]+)(?=$|[\s._-]|[a-z])/iu', $title, $matches)) {
+            return null;
+        }
+
+        return mb_strtolower($matches[1]);
     }
 }

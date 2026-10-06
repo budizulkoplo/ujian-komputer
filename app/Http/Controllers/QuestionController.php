@@ -210,7 +210,12 @@ class QuestionController extends Controller
         $this->ensureExamAccess($exam);
         abort_unless($question->exam_id === $exam->id, 404);
         $data = $this->validatedData($request);
-        if (array_key_exists('image', $data) && $question->image && $question->image !== $data['image']) {
+        if (
+            array_key_exists('image', $data)
+            && $question->image
+            && $question->image !== $data['image']
+            && !Question::where('image', $question->image)->where('id', '!=', $question->id)->exists()
+        ) {
             Storage::disk('public')->delete($question->image);
         }
         if (!array_key_exists('image', $data)) unset($data['image']);

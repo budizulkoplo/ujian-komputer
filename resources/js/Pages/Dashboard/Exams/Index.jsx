@@ -8,7 +8,7 @@ import Widget from '@/Components/Dashboard/Widget';
 import Modal from '@/Components/Dashboard/Modal';
 import DashboardLayout from '@/Layouts/DashboardLayout';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { IconBox, IconChartBar, IconCirclePlus, IconDatabaseOff, IconEye, IconPackage, IconPencilCheck, IconPencilCog, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
+import { IconBox, IconChartBar, IconCirclePlus, IconCopy, IconDatabaseOff, IconEye, IconPackage, IconPencilCheck, IconPencilCog, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
 import Input from '@/Components/Dashboard/Input';
 import InputSelect from '@/Components/Dashboard/InputSelect';
 import { useState } from 'react';
@@ -36,6 +36,7 @@ export default function Index({ lessons, classrooms, exams }) {
         isUpdate: false,
         isOpen: false,
     });
+    const copyForm = useForm({ classroom_id: '' });
 
     // define set selected value
 
@@ -45,6 +46,8 @@ export default function Index({ lessons, classrooms, exams }) {
     const [selectedRandomQuestion, setSelectedRandomQuestion] = useState(null)
     const [selectedRandomAnswer, setSelectedRandomAnswer] = useState(null)
     const [selectedShowAnswer, setSelectedShowAnswer] = useState(null)
+    const [selectedCopyClassroom, setSelectedCopyClassroom] = useState(null)
+    const [copySource, setCopySource] = useState(null)
 
     // Set gender
     const setSelectedLessonHandler = (value) => {
@@ -74,6 +77,34 @@ export default function Index({ lessons, classrooms, exams }) {
     const setSelectedShowAnswerHandler = (value) => {
         setSelectedShowAnswer(value)
         setData('show_answer', value.id)
+    }
+
+    const openCopyModal = (exam) => {
+        setCopySource(exam)
+        copyForm.reset()
+        copyForm.clearErrors()
+        setSelectedCopyClassroom(null)
+    }
+
+    const setSelectedCopyClassroomHandler = (value) => {
+        setSelectedCopyClassroom(value)
+        copyForm.setData('classroom_id', value.id)
+    }
+
+    const closeCopyModal = () => {
+        setCopySource(null)
+        copyForm.reset()
+        copyForm.clearErrors()
+        setSelectedCopyClassroom(null)
+    }
+
+    const submitCopy = (e) => {
+        e.preventDefault()
+        if (!copySource) return
+
+        copyForm.post(route('exams.copy', copySource.id), {
+            onSuccess: closeCopyModal,
+        })
     }
 
 
@@ -293,6 +324,38 @@ export default function Index({ lessons, classrooms, exams }) {
                     />
                 </form>
             </Modal>
+            <Modal
+                show={copySource !== null}
+                onClose={closeCopyModal}
+                title="Salin Ujian"
+            >
+                {copySource && (
+                    <form onSubmit={submitCopy}>
+                        <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">
+                            Salin ujian “{copySource.title}” dari kelas {copySource.classroom.title} beserta pengaturan dan seluruh soalnya.
+                        </p>
+                        <div className="mb-4">
+                            <InputSelect
+                                label="Kelas tujuan"
+                                data={copySource.copy_classrooms}
+                                selected={selectedCopyClassroom}
+                                setSelected={setSelectedCopyClassroomHandler}
+                                placeholder="Pilih kelas tujuan"
+                                errors={copyForm.errors.classroom_id}
+                                searchable
+                                displayKey="title"
+                            />
+                        </div>
+                        <Button
+                            type="submit"
+                            icon={<IconCopy size={18} strokeWidth={1.5} />}
+                            className="border bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-950 dark:border-gray-800 dark:text-gray-200"
+                            label={copyForm.processing ? 'Menyalin...' : 'Salin Ujian'}
+                            disabled={!copyForm.data.classroom_id || copyForm.processing}
+                        />
+                    </form>
+                )}
+            </Modal>
             <Table.Card title={'Data Pelajar'}>
                 <Table>
                     <Table.Thead>
@@ -337,6 +400,16 @@ export default function Index({ lessons, classrooms, exams }) {
                                                 href={route('exams.show', exam.id)}
                                                 label={'Detail'}
                                             />
+                                            {exam.copy_classrooms.length > 0 && (
+                                                <Button
+                                                    type={'modal'}
+                                                    icon={<IconCopy size={16} strokeWidth={1.5} />}
+                                                    className={'border bg-sky-100 border-sky-300 text-sky-600 hover:bg-sky-200 dark:bg-sky-950 dark:border-sky-800 dark:text-gray-300 dark:hover:bg-sky-900'}
+                                                    onClick={() => openCopyModal(exam)}
+                                                    title="Salin ujian ke kelas lain pada tingkatan yang sama"
+                                                    aria-label="Salin ujian"
+                                                />
+                                            )}
                                             <Button
                                                 type={'modal'}
                                                 icon={<IconPencilCog size={16} strokeWidth={1.5} />}

@@ -75,6 +75,7 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
     Route::post('/teachers/import', [TeacherController::class, 'import'])->middleware('admin.only')->name('teachers.import');
     Route::resource('teachers', TeacherController::class)->except(['create', 'edit', 'show'])->middleware('admin.only');
     Route::resource('lessons', LessonController::class);
+    Route::post('/exams/{exam}/copy', [ExamController::class, 'copy'])->name('exams.copy');
     Route::resource('exams', ExamController::class);
     Route::get('/settings', [SettingController::class, 'index'])->middleware('admin.only')->name('settings.index');
     Route::post('/settings', [SettingController::class, 'update'])->middleware('admin.only')->name('settings.update');
