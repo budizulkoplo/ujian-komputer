@@ -103,6 +103,7 @@ export default function QuestionForm({ exam, question = null }) {
     const imageInputRef = useRef(null);
     const { data, setData, post, processing, errors } = useForm({
         question: question?.question || '',
+        explanation: question?.explanation || '',
         image: null,
         remove_image: false,
         video_url: question?.video_url || '',
@@ -183,6 +184,11 @@ export default function QuestionForm({ exam, question = null }) {
             </div>
 
             <EditorField label="Pertanyaan" value={data.question} error={errors.question} onChange={(value) => setEditor('question', value)} />
+
+            <div className="mt-5">
+                <EditorField label="Pembahasan" value={data.explanation} error={errors.explanation} onChange={(value) => setEditor('explanation', value)} />
+                <p className="mt-1 text-xs text-slate-500">Pembahasan ini akan ikut ditampilkan pada PDF bank soal.</p>
+            </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div>

@@ -19,6 +19,7 @@ class Question extends Model
         'exam_id',
         'sort_order',
         'question',
+        'explanation',
         'image',
         'video_url',
         'type',

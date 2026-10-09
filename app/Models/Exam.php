@@ -21,6 +21,7 @@ class Exam extends Model
         'title',
         'lesson_id',
         'classroom_id',
+        'semester',
         'duration',
         'description',
         'random_question',

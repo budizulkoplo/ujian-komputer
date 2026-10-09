@@ -26,6 +26,7 @@ export default function Index({ lessons, classrooms, exams }) {
     const { data, setData, transform, post } = useForm({
         id: '',
         classroom_id: '',
+        semester: '',
         lesson_id: '',
         title: '',
         duration: '',
@@ -113,6 +114,7 @@ export default function Index({ lessons, classrooms, exams }) {
         title: data.title,
         lesson_id: data.lesson_id,
         classroom_id: data.classroom_id,
+        semester: data.semester,
         duration: data.duration,
         description: data.description,
         random_question: data.random_question,
@@ -128,6 +130,7 @@ export default function Index({ lessons, classrooms, exams }) {
             onSuccess: () => {
                 setData({
                     classroom_id: '',
+                    semester: '',
                     lesson_id: '',
                     title: '',
                     duration: '',
@@ -155,6 +158,7 @@ export default function Index({ lessons, classrooms, exams }) {
                 setData({
                     id: '',
                     classroom_id: '',
+                    semester: '',
                     lesson_id: '',
                     title: '',
                     duration: '',
@@ -203,6 +207,7 @@ export default function Index({ lessons, classrooms, exams }) {
                         isOpen: false,
                         id: '',
                         classroom_id: '',
+                        semester: '',
                         lesson_id: '',
                         title: '',
                         duration: '',
@@ -262,6 +267,15 @@ export default function Index({ lessons, classrooms, exams }) {
                             searchable
                             displayKey='title'
                         />
+                    </div>
+                    <div className="mb-4">
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">Semester</label>
+                        <select value={data.semester} onChange={(e) => setData('semester', e.target.value)} className="w-full rounded-lg border-slate-300 bg-white text-sm text-slate-700 focus:border-teal-500 focus:ring-teal-500" required>
+                            <option value="">Pilih semester</option>
+                            <option value="1">Semester 1</option>
+                            <option value="2">Semester 2</option>
+                        </select>
+                        {errors.semester && <p className="mt-1 text-xs text-rose-600">{errors.semester}</p>}
                     </div>
                     <div className="mb-4">
                         <InputSelect
@@ -363,6 +377,7 @@ export default function Index({ lessons, classrooms, exams }) {
                             <Table.Th className={'w-10'}>No</Table.Th>
                             <Table.Th>Kelas</Table.Th>
                             <Table.Th>Mata Pelajaran</Table.Th>
+                            <Table.Th>Semester</Table.Th>
                             <Table.Th>Ujian</Table.Th>
                             <Table.Th>Durasi</Table.Th>
                             <Table.Th>Jumlah Soal</Table.Th>
@@ -381,6 +396,9 @@ export default function Index({ lessons, classrooms, exams }) {
                                     </Table.Td>
                                     <Table.Td>
                                         {exam.lesson.title}
+                                    </Table.Td>
+                                    <Table.Td>
+                                        {exam.semester ? `Semester ${exam.semester}` : '-'}
                                     </Table.Td>
                                     <Table.Td>
                                         {exam.title}
@@ -424,6 +442,7 @@ export default function Index({ lessons, classrooms, exams }) {
                                                     setData({
                                                         id: exam.id,
                                                         classroom_id: exam.classroom_id,
+                                                        semester: exam.semester || '',
                                                         lesson_id: exam.lesson_id,
                                                         title: exam.title,
                                                         duration: exam.duration,
@@ -451,7 +470,7 @@ export default function Index({ lessons, classrooms, exams }) {
                                     </Table.Td>
                                 </tr>
                             )) :
-                            <Table.Empty colSpan={7} message={
+                            <Table.Empty colSpan={8} message={
                                 <>
                                     <div className='flex justify-center items-center text-center mb-2'>
                                         <IconDatabaseOff size={24} strokeWidth={1.5} className='text-gray-500 dark:text-white' />

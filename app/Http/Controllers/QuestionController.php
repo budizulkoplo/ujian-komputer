@@ -16,6 +16,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class QuestionController extends Controller
 {
@@ -62,21 +63,21 @@ class QuestionController extends Controller
         $choiceSheet = $spreadsheet->getActiveSheet();
         $choiceSheet->setTitle('Pilihan Ganda');
         $this->configureTemplateSheet($choiceSheet, [
-            'No', 'Jenis Soal', 'Pertanyaan', 'Opsi A', 'Opsi B', 'Opsi C',
+            'No', 'Jenis Soal', 'Pertanyaan', 'Pembahasan', 'Opsi A', 'Opsi B', 'Opsi C',
             'Opsi D', 'Opsi E', 'Jawaban Benar', 'Skor Maksimal', 'Video URL (opsional)',
         ]);
         $choiceSheet->fromArray([
-            ['CONTOH - HAPUS', 'Pilihan Ganda', 'Contoh: ibukota Indonesia adalah ...', 'Jakarta', 'Bandung', 'Surabaya', '', '', 'A', 10, ''],
-            ['CONTOH - HAPUS', 'Pilihan Ganda Kompleks', 'Contoh: pilih semua jawaban yang benar ...', 'A', 'B', 'C', '', '', 'A,C', 10, ''],
-            ['CONTOH - HAPUS', 'Urutan', 'Contoh: urutkan langkah berikut ...', 'Langkah 1', 'Langkah 2', 'Langkah 3', '', '', 'A,B,C', 10, ''],
-            ['CONTOH - HAPUS', 'Benar/Salah', 'Contoh: matahari terbit dari timur.', '', '', '', '', '', 'Benar', 10, ''],
+            ['CONTOH - HAPUS', 'Pilihan Ganda', 'Contoh: ibukota Indonesia adalah ...', 'Pembahasan contoh soal.', 'Jakarta', 'Bandung', 'Surabaya', '', '', 'A', 10, ''],
+            ['CONTOH - HAPUS', 'Pilihan Ganda Kompleks', 'Contoh: pilih semua jawaban yang benar ...', 'Pembahasan contoh soal.', 'A', 'B', 'C', '', '', 'A,C', 10, ''],
+            ['CONTOH - HAPUS', 'Urutan', 'Contoh: urutkan langkah berikut ...', 'Pembahasan contoh soal.', 'Langkah 1', 'Langkah 2', 'Langkah 3', '', '', 'A,B,C', 10, ''],
+            ['CONTOH - HAPUS', 'Benar/Salah', 'Contoh: matahari terbit dari timur.', 'Pembahasan contoh soal.', '', '', '', '', '', 'Benar', 10, ''],
         ], null, 'A2');
 
         $essaySheet = $spreadsheet->createSheet();
         $essaySheet->setTitle('Essay');
-        $this->configureTemplateSheet($essaySheet, ['No', 'Pertanyaan', 'Skor Maksimal', 'Video URL (opsional)']);
+        $this->configureTemplateSheet($essaySheet, ['No', 'Pertanyaan', 'Pembahasan', 'Skor Maksimal', 'Video URL (opsional)']);
         $essaySheet->fromArray([
-            ['CONTOH - HAPUS', 'Contoh: jelaskan pengertian ...', 10, ''],
+            ['CONTOH - HAPUS', 'Contoh: jelaskan pengertian ...', 'Poin-poin jawaban yang diharapkan.', 10, ''],
         ], null, 'A2');
 
         $spreadsheet->setActiveSheetIndex(0);
@@ -135,22 +136,24 @@ class QuestionController extends Controller
                     $data = $definition['type'] === 'essay'
                         ? [
                             'question' => trim((string) ($row['B'] ?? '')),
+                            'explanation' => trim((string) ($row['C'] ?? '')),
                             'type' => 'essay',
-                            'max_score' => $row['C'] ?? '',
-                            'video_url' => trim((string) ($row['D'] ?? '')),
+                            'max_score' => $row['D'] ?? '',
+                            'video_url' => trim((string) ($row['E'] ?? '')),
                             'answer_key' => null,
                         ]
                         : [
                             'question' => trim((string) ($row['C'] ?? '')),
+                            'explanation' => trim((string) ($row['D'] ?? '')),
                             'type' => $this->importedQuestionType($row['B'] ?? ''),
-                            'max_score' => $row['J'] ?? '',
-                            'option_1' => trim((string) ($row['D'] ?? '')),
-                            'option_2' => trim((string) ($row['E'] ?? '')),
-                            'option_3' => trim((string) ($row['F'] ?? '')),
-                            'option_4' => trim((string) ($row['G'] ?? '')),
-                            'option_5' => trim((string) ($row['H'] ?? '')),
-                            'answer_key' => $this->importedAnswerKey($row['I'] ?? '', $this->importedQuestionType($row['B'] ?? '')),
-                            'video_url' => trim((string) ($row['K'] ?? '')),
+                            'max_score' => $row['K'] ?? '',
+                            'option_1' => trim((string) ($row['E'] ?? '')),
+                            'option_2' => trim((string) ($row['F'] ?? '')),
+                            'option_3' => trim((string) ($row['G'] ?? '')),
+                            'option_4' => trim((string) ($row['H'] ?? '')),
+                            'option_5' => trim((string) ($row['I'] ?? '')),
+                            'answer_key' => $this->importedAnswerKey($row['J'] ?? '', $this->importedQuestionType($row['B'] ?? '')),
+                            'video_url' => trim((string) ($row['L'] ?? '')),
                         ];
 
                     $rowsToCreate[] = array_merge($this->normalizeQuestionData($data, 'Baris ' . $rowNumber), [
@@ -236,10 +239,29 @@ class QuestionController extends Controller
         return back();
     }
 
+    public function pdf(Exam $exam)
+    {
+        $this->ensureExamAccess($exam);
+        $exam->load(['lesson', 'classroom', 'questions']);
+        $exam->questions->each(function (Question $question) {
+            $path = ltrim(str_replace('/storage/', '', (string) $question->image), '/');
+            $question->setAttribute('pdf_image', $path && Storage::disk('public')->exists($path)
+                ? 'data:' . (mime_content_type(Storage::disk('public')->path($path)) ?: 'image/jpeg') . ';base64,' . base64_encode(Storage::disk('public')->get($path))
+                : null);
+        });
+
+        $filename = 'bank-soal-' . str()->slug($exam->lesson?->title ?: $exam->title) . '-semester-' . ($exam->semester ?: 'belum-diatur') . '.pdf';
+
+        return Pdf::loadView('questions.bank-pdf', ['exam' => $exam])
+            ->setPaper('a4', 'portrait')
+            ->download($filename);
+    }
+
     private function validatedData(Request $request): array
     {
         $data = $request->validate([
             'question' => ['required', 'string'],
+            'explanation' => ['nullable', 'string'],
             'image' => ['nullable', 'image', 'max:4096'],
             'remove_image' => ['nullable', 'boolean'],
             'video_url' => ['nullable', 'string', 'max:255'],
@@ -322,6 +344,7 @@ class QuestionController extends Controller
 
         $result = [
             'question' => $data['question'],
+            'explanation' => $data['explanation'] ?? null,
             'video_url' => $data['video_url'] ?? null,
             'type' => $type,
             'max_score' => (int) $data['max_score'],

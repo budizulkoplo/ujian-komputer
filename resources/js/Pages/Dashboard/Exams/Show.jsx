@@ -4,7 +4,7 @@ import Search from '@/Components/Dashboard/Search';
 import Table from '@/Components/Dashboard/Table';
 import DashboardLayout from '@/Layouts/DashboardLayout';
 import { Head, useForm } from '@inertiajs/react';
-import { IconChevronsLeft, IconCirclePlus, IconDownload, IconPencilCog, IconTrash, IconUpload } from '@tabler/icons-react';
+import { IconChevronsLeft, IconCirclePlus, IconDownload, IconFileTypePdf, IconPencilCog, IconTrash, IconUpload } from '@tabler/icons-react';
 import toast from 'react-hot-toast';
 
 const questionPreview = (value, limit = 110) => {
@@ -54,12 +54,16 @@ export default function Show({ exam }) {
                     <Table>
                         <Table.Tbody>
                             <tr>
-                                <Table.Td>Ujian</Table.Td>
+                                <Table.Td>Kelas</Table.Td>
                                 <Table.Td>{exam.classroom.title}</Table.Td>
                             </tr>
                             <tr>
                                 <Table.Td>Mata Pelajaran</Table.Td>
                                 <Table.Td>{exam.lesson.title}</Table.Td>
+                            </tr>
+                            <tr>
+                                <Table.Td>Semester</Table.Td>
+                                <Table.Td>{exam.semester ? `Semester ${exam.semester}` : 'Belum diatur'}</Table.Td>
                             </tr>
                             <tr>
                                 <Table.Td>Ujian</Table.Td>
@@ -85,6 +89,9 @@ export default function Show({ exam }) {
                             href={route('exams.questions.create', [exam.id])}
                             added={true}
                         />
+                        <a href={route('exams.questions.pdf', exam.id)} className='inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100'>
+                            <IconFileTypePdf size={18} /> Download Bank Soal PDF
+                        </a>
                     </div>
                 </div>
             </div>
