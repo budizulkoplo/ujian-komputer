@@ -22,10 +22,7 @@ class ExamSessionController extends Controller
         //get exam_sessions
         $exam_sessions = ExamSession::whereIn('exam_id', $this->accessibleExams()->select('id'))->when(request()->search, function ($exam_sessions) {
             $exam_sessions = $exam_sessions->where('title', 'like', '%' . request()->search . '%');
-        })->with('exam.classroom', 'exam.lesson', 'exam_groups')->latest()->paginate(5);
-
-        //append query string to pagination links
-        $exam_sessions->appends(['q' => request()->search]);
+        })->with('exam.classroom', 'exam.lesson', 'exam_groups')->latest()->get();
 
         //render with inertia
         return Inertia::render('Dashboard/ExamSessions/Index', [

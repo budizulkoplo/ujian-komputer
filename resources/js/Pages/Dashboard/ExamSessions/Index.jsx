@@ -244,11 +244,11 @@ export default function Index({ exam_sessions, exams }) {
                         </tr>
                     </Table.Thead>
                     <Table.Tbody>
-                        {exam_sessions.data.length ?
-                            exam_sessions.data.map((exam_session, i) => (
+                        {exam_sessions.length ?
+                            exam_sessions.map((exam_session, i) => (
                                 <tr className='hover:bg-gray-100 dark:hover:bg-gray-900' key={i}>
                                     <Table.Td className='text-center'>
-                                        {++i + (exam_sessions.current_page - 1) * exam_sessions.per_page}
+                                        {i + 1}
                                     </Table.Td>
                                     <Table.Td>
                                         <strong>{exam_session.exam.title}</strong>

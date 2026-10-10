@@ -244,10 +244,10 @@ class QuestionController extends Controller
         $this->ensureExamAccess($exam);
         $exam->load(['lesson', 'classroom', 'questions']);
         $exam->questions->each(function (Question $question) {
-            $path = ltrim(str_replace('/storage/', '', (string) $question->image), '/');
-            $question->setAttribute('pdf_image', $path && Storage::disk('public')->exists($path)
-                ? 'data:' . (mime_content_type(Storage::disk('public')->path($path)) ?: 'image/jpeg') . ';base64,' . base64_encode(Storage::disk('public')->get($path))
-                : null);
+            $question->setAttribute('pdf_image', $this->imageToDataUri($question->image));
+            foreach (['question', 'explanation', 'option_1', 'option_2', 'option_3', 'option_4', 'option_5'] as $field) {
+                $question->setAttribute($field, $this->inlinePdfImages($question->{$field}));
+            }
         });
 
         $filename = 'bank-soal-' . str()->slug($exam->lesson?->title ?: $exam->title) . '-semester-' . ($exam->semester ?: 'belum-diatur') . '.pdf';
@@ -255,6 +255,37 @@ class QuestionController extends Controller
         return Pdf::loadView('questions.bank-pdf', ['exam' => $exam])
             ->setPaper('a4', 'portrait')
             ->download($filename);
+    }
+
+    private function inlinePdfImages(?string $html): ?string
+    {
+        if (!$html || !str_contains($html, '<img')) return $html;
+
+        return preg_replace_callback('/(<img\b[^>]*\bsrc\s*=\s*)(["\'])(.*?)\2([^>]*>)/is', function (array $matches) {
+            $dataUri = $this->imageToDataUri(html_entity_decode($matches[3], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            return $dataUri ? $matches[1] . $matches[2] . $dataUri . $matches[2] . $matches[4] : $matches[0];
+        }, $html);
+    }
+
+    private function imageToDataUri(?string $source): ?string
+    {
+        if (!$source) return null;
+        if (str_starts_with($source, 'data:image/')) return $source;
+
+        $path = parse_url($source, PHP_URL_PATH) ?: $source;
+        $storagePrefix = '/storage/';
+        $storagePosition = strpos($path, $storagePrefix);
+        $path = $storagePosition !== false
+            ? substr($path, $storagePosition + strlen($storagePrefix))
+            : ltrim($path, '/');
+        $path = urldecode($path);
+
+        if (!$path || str_contains($path, '..') || !Storage::disk('public')->exists($path)) return null;
+
+        $absolutePath = Storage::disk('public')->path($path);
+        $mime = mime_content_type($absolutePath) ?: 'image/jpeg';
+
+        return 'data:' . $mime . ';base64,' . base64_encode(Storage::disk('public')->get($path));
     }
 
     private function validatedData(Request $request): array
