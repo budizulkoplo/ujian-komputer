@@ -12,15 +12,18 @@
         .meta { width: 100%; border-collapse: collapse; margin: 12px 0 20px; }
         .meta td { border: 1px solid #cbd5e1; padding: 6px 8px; }
         .meta .label { width: 22%; background: #f1f5f9; font-weight: bold; }
-        .question { page-break-inside: avoid; border-top: 1px solid #cbd5e1; padding: 12px 0 10px; }
+        .question { page-break-inside: auto; border-top: 1px solid #cbd5e1; padding: 10px 0 8px; }
         .question:first-of-type { border-top: 0; }
         .number { display: inline-block; width: 25px; font-weight: bold; color: #0f766e; vertical-align: top; }
         .content { display: inline-block; width: 88%; vertical-align: top; }
-        .content p { margin: 0 0 5px; }
-        .content img { max-width: 480px; max-height: 180px; }
+        .content p { margin: 0 0 4px; }
+        .content img { max-width: 100%; width: auto; height: auto; }
+        .question-image { display: block; max-width: 440px !important; max-height: 135px !important; margin: 5px 0 7px; object-fit: contain; }
         .type { color: #64748b; font-size: 9px; text-transform: uppercase; }
-        .options { margin: 7px 0 0 0; padding-left: 18px; }
-        .options li { padding: 1px 0; }
+        .options { margin: 5px 0 0 0; padding-left: 18px; }
+        .options li { padding: 1px 0; page-break-inside: avoid; }
+        .options p { margin: 0; }
+        .options img { display: block; max-width: 220px !important; max-height: 72px !important; margin: 2px 0 3px; object-fit: contain; }
         .answer, .explanation { margin-top: 8px; padding: 7px 9px; border-left: 3px solid #0f766e; background: #f0fdfa; }
         .explanation { border-left-color: #f59e0b; background: #fffbeb; }
         .answer strong, .explanation strong { color: #334155; }
@@ -63,7 +66,7 @@
                 <div class="type">{{ $typeLabels[$question->type] ?? $question->type }}</div>
                 {!! $question->question !!}
                 @if ($question->pdf_image)
-                    <p><img src="{{ $question->pdf_image }}" alt="Ilustrasi soal"></p>
+                    <p><img class="question-image" src="{{ $question->pdf_image }}" alt="Ilustrasi soal"></p>
                 @endif
                 @if ($options->isNotEmpty())
                     <ol class="options" type="A">

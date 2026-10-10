@@ -120,6 +120,7 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
     Route::get('/reports/filter', [ReportController::class, 'filter'])->name('reports.filter');
 
     Route::get('/corrections', [CorrectionController::class, 'index'])->name('corrections.index');
+    Route::post('/corrections/publish', [CorrectionController::class, 'publish'])->name('corrections.publish');
     Route::put('/corrections/{answer}', [CorrectionController::class, 'update'])->name('corrections.update');
     Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring.index');
     Route::patch('/monitoring/{examGroup}/unlock', [MonitoringController::class, 'unlock'])->name('monitoring.unlock');

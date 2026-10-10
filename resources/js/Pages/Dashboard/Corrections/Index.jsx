@@ -1,7 +1,7 @@
 import DashboardLayout from '@/Layouts/DashboardLayout';
 import Card from '@/Components/Dashboard/Card';
 import { Head, router, useForm } from '@inertiajs/react';
-import { IconAlertTriangle, IconArrowLeft, IconCheck, IconDeviceFloppy, IconPencil, IconX } from '@tabler/icons-react';
+import { IconAlertTriangle, IconArrowLeft, IconCheck, IconDeviceFloppy, IconPencil, IconSend, IconX } from '@tabler/icons-react';
 
 const typeLabels = {
     multiple_choice: 'Pilihan Ganda',
@@ -13,6 +13,9 @@ const typeLabels = {
 
 export default function Index({ exams = [], attempts = [], answers = [], selectedExamId = null, selectedAttemptKey = null }) {
     const selectedAttempt = attempts.find((attempt) => attempt.key === selectedAttemptKey);
+    const publishForm = useForm({ exam_id: '' });
+    const { post: publishResults, processing: publishing } = publishForm;
+    const allReleased = attempts.length > 0 && attempts.every((attempt) => attempt.released);
 
     const selectExam = (event) => {
         const examId = event.target.value;
@@ -21,6 +24,11 @@ export default function Index({ exams = [], attempts = [], answers = [], selecte
 
     const openCorrection = (attempt) => router.get(route('corrections.index', { exam_id: selectedExamId, attempt: attempt.key }), { preserveScroll: true });
     const backToStudents = () => router.get(route('corrections.index', { exam_id: selectedExamId }), { preserveScroll: true });
+    const publish = () => {
+        if (!selectedExamId || allReleased || !window.confirm('Publikasikan nilai seluruh siswa yang sudah menyelesaikan ujian ini?')) return;
+        publishForm.transform(() => ({ exam_id: selectedExamId }));
+        publishResults(route('corrections.publish'), { preserveScroll: true });
+    };
 
     return <>
         <Head title="Koreksi Ujian" />
@@ -35,9 +43,13 @@ export default function Index({ exams = [], attempts = [], answers = [], selecte
 
             {!selectedExamId ? <Notice>Silakan pilih ujian untuk melihat jawaban siswa.</Notice> : null}
             {selectedExamId && !attempts.length ? <Notice>Belum ada siswa yang menyelesaikan ujian ini.</Notice> : null}
+            {selectedExamId && attempts.length > 0 ? <div className="mt-5 flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div><p className="font-semibold text-sky-900">Publikasi nilai ujian</p><p className="mt-1 text-sm text-sky-800">Nilai siswa belum tampil sebelum dipublikasikan. Pastikan seluruh essay sudah dikoreksi.</p></div>
+                <button type="button" onClick={publish} disabled={publishing || allReleased} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"><IconSend size={17} /> {allReleased ? 'Nilai sudah dipublikasikan' : publishing ? 'Mempublikasikan...' : 'Publish Nilai'}</button>
+            </div> : null}
             {selectedAttempt ? <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div><p className="text-lg font-bold text-slate-900">{selectedAttempt.student?.name}</p><p className="text-sm text-slate-500">NISN {selectedAttempt.student?.nisn || '-'} · Sesi {selectedAttempt.exam_session?.title || '-'}</p></div>
-                <div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${selectedAttempt.released ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{selectedAttempt.released ? 'Sudah dikoreksi' : 'Belum dikoreksi'}</span><button type="button" onClick={backToStudents} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"><IconArrowLeft size={15} /> Daftar siswa</button></div>
+                <div className="flex items-center gap-2"><span className={`rounded-full px-3 py-1 text-xs font-semibold ${selectedAttempt.released ? 'bg-emerald-100 text-emerald-700' : selectedAttempt.correction_status === 'completed' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}`}>{selectedAttempt.released ? 'Sudah dipublikasikan' : selectedAttempt.correction_status === 'completed' ? 'Sudah dikoreksi' : 'Belum dikoreksi'}</span><button type="button" onClick={backToStudents} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"><IconArrowLeft size={15} /> Daftar siswa</button></div>
             </div> : null}
         </Card>
 
@@ -49,7 +61,7 @@ export default function Index({ exams = [], attempts = [], answers = [], selecte
 function StudentList({ attempts, onCorrection }) {
     return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold text-slate-900">Daftar Siswa</h2><p className="mt-1 text-sm text-slate-500">Pilih siswa untuk membuka seluruh soal dan jawaban yang sudah dikerjakan.</p></div>
-        <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">No</th><th className="px-5 py-3">Siswa</th><th className="px-5 py-3">NISN</th><th className="px-5 py-3">Sesi</th><th className="px-5 py-3">Progress Koreksi</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Aksi</th></tr></thead><tbody className="divide-y divide-slate-100">{attempts.map((attempt, index) => <tr key={attempt.key} className="hover:bg-slate-50"><td className="px-5 py-4 text-slate-500">{index + 1}</td><td className="px-5 py-4 font-semibold text-slate-900">{attempt.student?.name || '-'}</td><td className="px-5 py-4 text-slate-600">{attempt.student?.nisn || '-'}</td><td className="px-5 py-4 text-slate-600">{attempt.exam_session?.title || '-'}</td><td className="px-5 py-4 text-slate-600">{attempt.manual_questions ? `${attempt.reviewed_questions}/${attempt.manual_questions} essay` : 'Otomatis'}</td><td className="px-5 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${attempt.correction_status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{attempt.correction_status === 'completed' ? 'Sudah dikoreksi' : 'Belum dikoreksi'}</span></td><td className="px-5 py-4 text-right"><button type="button" onClick={() => onCorrection(attempt)} className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800"><IconPencil size={15} /> Koreksi</button></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">No</th><th className="px-5 py-3">Siswa</th><th className="px-5 py-3">NISN</th><th className="px-5 py-3">Sesi</th><th className="px-5 py-3">Progress Koreksi</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Aksi</th></tr></thead><tbody className="divide-y divide-slate-100">{attempts.map((attempt, index) => <tr key={attempt.key} className="hover:bg-slate-50"><td className="px-5 py-4 text-slate-500">{index + 1}</td><td className="px-5 py-4 font-semibold text-slate-900">{attempt.student?.name || '-'}</td><td className="px-5 py-4 text-slate-600">{attempt.student?.nisn || '-'}</td><td className="px-5 py-4 text-slate-600">{attempt.exam_session?.title || '-'}</td><td className="px-5 py-4 text-slate-600">{attempt.manual_questions ? `${attempt.reviewed_questions}/${attempt.manual_questions} essay` : 'Otomatis'}</td><td className="px-5 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${attempt.released ? 'bg-emerald-100 text-emerald-700' : attempt.correction_status === 'completed' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}`}>{attempt.released ? 'Sudah dipublikasikan' : attempt.correction_status === 'completed' ? 'Sudah dikoreksi' : 'Belum dikoreksi'}</span></td><td className="px-5 py-4 text-right"><button type="button" onClick={() => onCorrection(attempt)} className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800"><IconPencil size={15} /> Koreksi</button></td></tr>)}</tbody></table></div>
     </div>;
 }
 

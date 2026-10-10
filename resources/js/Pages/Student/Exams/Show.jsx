@@ -109,7 +109,10 @@ export default function Show({ id, page, exam_group: group, all_questions: allQu
         }, {
             preserveScroll: true,
             onFinish: () => setProcessing(false),
-            onSuccess: () => router.visit(route('student.examination.show', { id, page: nextPage })),
+            onSuccess: (response) => {
+                if (response.component === 'Student/Dashboard') return;
+                router.visit(route('student.examination.show', { id, page: nextPage }));
+            },
         });
     };
     const finishExam = () => {

@@ -101,6 +101,31 @@ class CorrectionController extends Controller
         return back()->with('success', 'Nilai essay berhasil disimpan.');
     }
 
+    public function publish(Request $request)
+    {
+        $data = $request->validate([
+            'exam_id' => ['required', 'integer'],
+        ]);
+        $this->ensureExamAccess((int) $data['exam_id']);
+
+        $grades = Grade::where('exam_id', $data['exam_id'])
+            ->whereNotNull('end_time')
+            ->get();
+
+        if ($grades->isEmpty()) {
+            return back()->with('error', 'Belum ada siswa yang menyelesaikan ujian ini.');
+        }
+
+        $unfinished = $grades->filter(fn (Grade $grade) => !$grade->isReadyForRelease());
+        if ($unfinished->isNotEmpty()) {
+            return back()->with('error', 'Nilai belum dapat dipublikasikan. Selesaikan koreksi essay terlebih dahulu.');
+        }
+
+        Grade::whereIn('id', $grades->pluck('id'))->update(['results_released' => true]);
+
+        return back()->with('success', $grades->count() . ' nilai siswa berhasil dipublikasikan.');
+    }
+
     private function answerDetail(Answer $answer, int $number): array
     {
         $question = $answer->question;

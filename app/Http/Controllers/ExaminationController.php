@@ -249,7 +249,11 @@ class ExaminationController extends Controller
         $grade = Grade::where('exam_id', $examGroup->exam_id)
             ->where('exam_session_id', $examGroup->exam_session_id)
             ->where('student_id', $studentId)->firstOrFail();
-        abort_if($grade->end_time || $grade->is_locked, 403, 'Ujian sudah selesai.');
+        if ($grade->end_time || $grade->is_locked) {
+            return redirect()->route('student.dashboard')->with('info', $grade->is_locked
+                ? 'Ujian dikunci karena batas pelanggaran tercapai.'
+                : 'Ujian sudah selesai. Jawaban terakhir telah diproses.');
+        }
         $question = Question::where('exam_id', $examGroup->exam_id)->findOrFail($request->integer('question_id'));
         $submitted = $request->input('answer_value', $request->input('answer'));
         $answer = Answer::where('exam_id', $examGroup->exam_id)
@@ -270,7 +274,11 @@ class ExaminationController extends Controller
         $grade = Grade::where('exam_id', $examGroup->exam_id)
             ->where('exam_session_id', $examGroup->exam_session_id)
             ->where('student_id', $studentId)->firstOrFail();
-        abort_if($grade->end_time || $grade->is_locked, 403, 'Ujian sudah selesai atau dikunci.');
+        if ($grade->end_time || $grade->is_locked) {
+            return redirect()->route('student.dashboard')->with('info', $grade->is_locked
+                ? 'Ujian dikunci karena batas pelanggaran tercapai.'
+                : 'Ujian sudah selesai.');
+        }
 
         // Peserta baru boleh mengakhiri ujian secara manual ketika sisa waktu
         // sudah 10 menit atau kurang. Jika waktu habis, proses otomatis tetap

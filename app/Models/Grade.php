@@ -25,12 +25,14 @@ class Grade extends Model
         'end_time',
         'total_correct',
         'grade',
+        'results_released',
         'is_locked',
         'cheat_count',
     ];
 
     protected $casts = [
         'is_locked' => 'boolean',
+        'results_released' => 'boolean',
         'cheat_count' => 'integer',
         'expires_at' => 'datetime',
     ];
@@ -66,6 +68,11 @@ class Grade extends Model
     }
 
     public function isReleased(): bool
+    {
+        return (bool) $this->results_released && $this->isReadyForRelease();
+    }
+
+    public function isReadyForRelease(): bool
     {
         if (!$this->end_time) return false;
 
