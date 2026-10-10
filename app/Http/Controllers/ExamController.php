@@ -19,9 +19,32 @@ class ExamController extends Controller
      */
     public function index()
     {
-        $exams = $this->accessibleExams()->when(request()->search, function ($exams) {
-            $exams = $exams->where('title', 'like', '%' . request()->search . '%');
-        })->with('lesson', 'classroom', 'questions')->latest()->paginate(10)->withQueryString();
+        $search = trim((string) request('search', ''));
+        $sort = (string) request('sort', 'created_at');
+        $direction = request('direction') === 'asc' ? 'asc' : 'desc';
+        $perPage = min(max((int) request('per_page', 10), 5), 50);
+        $allowedSorts = ['title', 'lesson', 'classroom', 'semester', 'duration', 'question_count', 'created_at'];
+        if (!in_array($sort, $allowedSorts, true)) $sort = 'created_at';
+
+        $examQuery = $this->accessibleExams()
+            ->when($search !== '', function ($exams) use ($search) {
+                $exams->where(function ($query) use ($search) {
+                    $query->where('title', 'like', '%' . $search . '%')
+                        ->orWhereHas('lesson', fn ($lesson) => $lesson->where('title', 'like', '%' . $search . '%'))
+                        ->orWhereHas('classroom', fn ($classroom) => $classroom->where('title', 'like', '%' . $search . '%'));
+                });
+            })
+            ->with('lesson', 'classroom')
+            ->withCount('questions');
+
+        match ($sort) {
+            'lesson' => $examQuery->orderBy(Lesson::select('title')->whereColumn('lessons.id', 'exams.lesson_id'), $direction),
+            'classroom' => $examQuery->orderBy(Classroom::select('title')->whereColumn('classrooms.id', 'exams.classroom_id'), $direction),
+            'question_count' => $examQuery->orderBy('questions_count', $direction),
+            default => $examQuery->orderBy($sort, $direction),
+        };
+
+        $exams = $examQuery->paginate($perPage)->withQueryString();
 
         $lessons = $this->accessibleLessons()->get();
 
@@ -41,6 +64,12 @@ class ExamController extends Controller
             'exams' => $exams,
             'lessons' => $lessons,
             'classrooms' => $classrooms,
+            'filters' => [
+                'search' => $search,
+                'sort' => $sort,
+                'direction' => $direction,
+                'per_page' => $perPage,
+            ],
         ]);
     }
 

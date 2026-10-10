@@ -1,21 +1,54 @@
 import Checkbox from '@/Components/Dashboard/Checkbox';
 import Button from '@/Components/Dashboard/Button';
 import Card from '@/Components/Dashboard/Card';
-import Search from '@/Components/Dashboard/Search';
 import Table from '@/Components/Dashboard/Table';
 import Pagination from '@/Components/Dashboard/Pagination';
 import Widget from '@/Components/Dashboard/Widget';
 import Modal from '@/Components/Dashboard/Modal';
 import DashboardLayout from '@/Layouts/DashboardLayout';
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { IconBox, IconChartBar, IconCirclePlus, IconCopy, IconDatabaseOff, IconEye, IconPackage, IconPencilCheck, IconPencilCog, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { IconArrowsSort, IconBox, IconChartBar, IconChevronDown, IconChevronUp, IconCirclePlus, IconCopy, IconDatabaseOff, IconEye, IconPackage, IconPencilCheck, IconPencilCog, IconSearch, IconTrash, IconUserShield, IconUsers, IconWallet } from '@tabler/icons-react';
 import Input from '@/Components/Dashboard/Input';
 import InputSelect from '@/Components/Dashboard/InputSelect';
 import { useState } from 'react';
 import Textarea from '@/Components/Dashboard/TextArea';
 
-export default function Index({ lessons, classrooms, exams }) {
+export default function Index({ lessons, classrooms, exams, filters = {} }) {
     const { errors } = usePage().props;
+    const [search, setSearch] = useState(filters.search || '');
+    const [sort, setSort] = useState(filters.sort || 'created_at');
+    const [direction, setDirection] = useState(filters.direction || 'desc');
+    const [perPage, setPerPage] = useState(String(filters.per_page || 10));
+
+    const tableRequest = (changes = {}) => {
+        const params = {
+            search: (changes.search ?? search) || undefined,
+            sort: changes.sort ?? sort,
+            direction: changes.direction ?? direction,
+            per_page: changes.per_page ?? perPage,
+            page: changes.page,
+        };
+        if (!params.page) delete params.page;
+        router.get(route('exams.index'), params, { preserveState: true, preserveScroll: true });
+    };
+
+    const submitSearch = (event) => {
+        event.preventDefault();
+        tableRequest({ page: 1 });
+    };
+
+    const changeSort = (column) => {
+        const nextDirection = sort === column && direction === 'asc' ? 'desc' : 'asc';
+        setSort(column);
+        setDirection(nextDirection);
+        tableRequest({ sort: column, direction: nextDirection, page: 1 });
+    };
+
+    const changePerPage = (event) => {
+        const value = event.target.value;
+        setPerPage(value);
+        tableRequest({ per_page: value, page: 1 });
+    };
 
     const is_selected = [
         { id: 'Y', name: 'Ya' },
@@ -192,12 +225,28 @@ export default function Index({ lessons, classrooms, exams }) {
                             added={true}
                         />
                     </div>
-                    <div className='w-full md:w-4/12'>
-                        <Search
-                            url={route('exams.index')}
-                            placeholder={'Cari data berdasarkan nama'}
-                        />
+                </div>
+            </div>
+            <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <form onSubmit={submitSearch} className="flex w-full lg:max-w-xl">
+                        <div className="relative min-w-0 flex-1">
+                            <IconSearch size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari judul, mata pelajaran, atau kelas..." className="w-full rounded-l-lg border-slate-300 py-2.5 pl-10 pr-4 text-sm focus:border-teal-500 focus:ring-teal-500" />
+                        </div>
+                        <button type="submit" className="inline-flex items-center gap-1.5 rounded-r-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800"><IconSearch size={16} /> Cari</button>
+                    </form>
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <span>Tampilkan</span>
+                        <select value={perPage} onChange={changePerPage} className="rounded-lg border-slate-300 py-2 text-sm focus:border-teal-500 focus:ring-teal-500">
+                            {[10, 25, 50].map((value) => <option key={value} value={value}>{value}</option>)}
+                        </select>
+                        <span>data</span>
                     </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                    <span>{exams.total ? `Menampilkan ${exams.from}–${exams.to} dari ${exams.total} ujian` : 'Tidak ada data ujian'}</span>
+                    <span>Gunakan judul kolom untuk mengurutkan data.</span>
                 </div>
             </div>
             <Modal
@@ -370,24 +419,24 @@ export default function Index({ lessons, classrooms, exams }) {
                     </form>
                 )}
             </Modal>
-            <Table.Card title={'Data Pelajar'}>
+            <Table.Card title={'Data Ujian'}>
                 <Table>
                     <Table.Thead>
                         <tr>
                             <Table.Th className={'w-10'}>No</Table.Th>
-                            <Table.Th>Kelas</Table.Th>
-                            <Table.Th>Mata Pelajaran</Table.Th>
-                            <Table.Th>Semester</Table.Th>
-                            <Table.Th>Ujian</Table.Th>
-                            <Table.Th>Durasi</Table.Th>
-                            <Table.Th>Jumlah Soal</Table.Th>
+                            <SortHeader label="Kelas" column="classroom" sort={sort} direction={direction} onSort={changeSort} />
+                            <SortHeader label="Mata Pelajaran" column="lesson" sort={sort} direction={direction} onSort={changeSort} />
+                            <SortHeader label="Semester" column="semester" sort={sort} direction={direction} onSort={changeSort} />
+                            <SortHeader label="Ujian" column="title" sort={sort} direction={direction} onSort={changeSort} />
+                            <SortHeader label="Durasi" column="duration" sort={sort} direction={direction} onSort={changeSort} />
+                            <SortHeader label="Jumlah Soal" column="question_count" sort={sort} direction={direction} onSort={changeSort} />
                             <Table.Th></Table.Th>
                         </tr>
                     </Table.Thead>
                     <Table.Tbody>
                         {exams.data.length ?
                             exams.data.map((exam, i) => (
-                                <tr className='hover:bg-gray-100 dark:hover:bg-gray-900' key={i}>
+                                <tr className='hover:bg-gray-100 dark:hover:bg-gray-900' key={exam.id}>
                                     <Table.Td className='text-center'>
                                         {++i + (exams.current_page - 1) * exams.per_page}
                                     </Table.Td>
@@ -407,7 +456,7 @@ export default function Index({ lessons, classrooms, exams }) {
                                         {exam.duration}
                                     </Table.Td>
                                     <Table.Td>
-                                        {exam.questions.length}
+                                        {exam.questions_count}
                                     </Table.Td>
                                     <Table.Td>
                                         <div className='flex gap-2 md:justify-center'>
@@ -488,3 +537,13 @@ export default function Index({ lessons, classrooms, exams }) {
 }
 
 Index.layout = page => <DashboardLayout children={page} />
+
+function SortHeader({ label, column, sort, direction, onSort }) {
+    const active = sort === column;
+    return <Table.Th>
+        <button type="button" onClick={() => onSort(column)} className="inline-flex items-center gap-1.5 font-semibold text-slate-700 hover:text-teal-700">
+            {label}
+            {active ? direction === 'asc' ? <IconChevronUp size={15} /> : <IconChevronDown size={15} /> : <IconArrowsSort size={14} className="text-slate-400" />}
+        </button>
+    </Table.Th>;
+}

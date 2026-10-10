@@ -6,9 +6,9 @@ import Search from '@/Components/Dashboard/Search';
 import Table from '@/Components/Dashboard/Table'
 import DashboardLayout from '@/Layouts/DashboardLayout'
 import { Head, router, useForm, usePage } from '@inertiajs/react'
-import { IconDatabaseOff, IconPencilCheck, IconUserBolt } from '@tabler/icons-react';
+import { IconDatabaseOff, IconDownload } from '@tabler/icons-react';
 import React, { useState } from 'react'
-export default function Index({ exams = [], grades = [] }) {
+export default function Index({ exams = [], grades = [], selectedExamId = null }) {
 
     // destruct permissions from props
     const { permissions } = usePage().props;
@@ -17,7 +17,7 @@ export default function Index({ exams = [], grades = [] }) {
         exam_id: '',
     });
 
-    const [selectedExam, setSelectedExam] = useState(null)
+    const [selectedExam, setSelectedExam] = useState(() => exams.find((exam) => String(exam.id) === String(selectedExamId)) || null)
 
     // Set gender
     const setSelectedExamHandler = (value) => {
@@ -27,11 +27,7 @@ export default function Index({ exams = [], grades = [] }) {
 
     const filterData = (e) => {
         e.preventDefault();
-        router.get(route('reports.filter', data), {
-            onSuccess: () => {
-                setSelectedExam(null);
-            }
-        })
+        router.get(route('reports.filter', data))
     }
 
     return (
@@ -66,6 +62,13 @@ export default function Index({ exams = [], grades = [] }) {
                         </div>
                     </form>
                 </div>
+                {selectedExamId ? <div className='mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-teal-200 bg-teal-50 p-4'>
+                    <div className='text-sm text-teal-900'>Laporan terpilih: <span className='font-bold'>{exams.find((exam) => String(exam.id) === String(selectedExamId))?.title || '-'}</span></div>
+                    <div className='flex flex-wrap gap-2'>
+                        <a href={route('reports.excel', { exam_id: selectedExamId })} className='inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800'><IconDownload size={16} /> Download Excel</a>
+                        <a href={route('reports.pdf', { exam_id: selectedExamId })} className='inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-800'><IconDownload size={16} /> Download PDF</a>
+                    </div>
+                </div> : null}
                 <Table.Card title={'Hasil Ujian'}>
                     <Table>
                         <Table.Thead>

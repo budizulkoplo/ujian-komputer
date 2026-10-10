@@ -118,6 +118,8 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
 
     //route index reports filter
     Route::get('/reports/filter', [ReportController::class, 'filter'])->name('reports.filter');
+    Route::get('/reports/excel', [ReportController::class, 'excel'])->name('reports.excel');
+    Route::get('/reports/pdf', [ReportController::class, 'pdf'])->name('reports.pdf');
 
     Route::get('/corrections', [CorrectionController::class, 'index'])->name('corrections.index');
     Route::post('/corrections/publish', [CorrectionController::class, 'publish'])->name('corrections.publish');
