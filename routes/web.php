@@ -16,6 +16,7 @@ use App\Http\Controllers\QuestionController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\StudentController;
+use App\Http\Controllers\StudentClassMutationController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\TeacherController;
 use App\Http\Controllers\UserController;
@@ -70,6 +71,8 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
     Route::get('/students/template', [StudentController::class, 'downloadTemplate'])->middleware('admin.only')->name('students.template');
     Route::post('/students/import', [StudentController::class, 'import'])->middleware('admin.only')->name('students.import');
     Route::resource('students', StudentController::class)->middleware('admin.only');
+    Route::get('/student-class-mutations', [StudentClassMutationController::class, 'index'])->middleware('admin.only')->name('student_class_mutations.index');
+    Route::post('/student-class-mutations', [StudentClassMutationController::class, 'store'])->middleware('admin.only')->name('student_class_mutations.store');
     Route::get('/teachers/template', [TeacherController::class, 'downloadTemplate'])->middleware('admin.only')->name('teachers.template');
     Route::get('/teachers/export', [TeacherController::class, 'export'])->middleware('admin.only')->name('teachers.export');
     Route::post('/teachers/import', [TeacherController::class, 'import'])->middleware('admin.only')->name('teachers.import');

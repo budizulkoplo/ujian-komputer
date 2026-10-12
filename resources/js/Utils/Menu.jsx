@@ -44,6 +44,13 @@ export default function Menu() {
                     permissions: !isTeacher,
                 },
                 {
+                    title: 'Mutasi Kelas Siswa',
+                    href: route('student_class_mutations.index'),
+                    active: url.startsWith('/dashboard/student-class-mutations'),
+                    icon: <IconUsers size={20} strokeWidth={1.5} className="text-orange-500" />,
+                    permissions: !isTeacher,
+                },
+                {
                     title: 'Guru',
                     href: route('teachers.index'),
                     active: url.startsWith('/dashboard/teachers'),
