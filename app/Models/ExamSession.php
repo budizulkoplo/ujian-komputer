@@ -25,6 +25,8 @@ class ExamSession extends Model
     ];
 
     protected $casts = [
+        'start_time' => 'datetime',
+        'end_time' => 'datetime',
         'token_closed_at' => 'datetime',
     ];
 

@@ -79,6 +79,7 @@ Route::group(['prefix' => 'dashboard', 'middleware' => ['auth']], function () {
     Route::resource('exams', ExamController::class);
     Route::get('/settings', [SettingController::class, 'index'])->middleware('admin.only')->name('settings.index');
     Route::post('/settings', [SettingController::class, 'update'])->middleware('admin.only')->name('settings.update');
+    Route::get('/settings/backup', [SettingController::class, 'backup'])->middleware('admin.only')->name('settings.backup');
 
     //custom route for create question exam
     Route::get('/exams/{exam}/questions/create', [QuestionController::class, 'create'])->name('exams.questions.create');

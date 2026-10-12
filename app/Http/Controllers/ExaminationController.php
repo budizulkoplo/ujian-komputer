@@ -113,8 +113,10 @@ class ExaminationController extends Controller
         if ($grade->is_locked || $grade->end_time) {
             return redirect()->route('student.dashboard')->with('error', 'Ujian ini tidak dapat dilanjutkan.');
         }
-        $grade->start_time ??= Carbon::now();
-        $grade->expires_at ??= Carbon::now()->addMilliseconds(max(0, (int) $grade->duration));
+        if (!$grade->start_time && Carbon::now()->greaterThanOrEqualTo($examGroup->exam_session->end_time)) {
+            return redirect()->route('student.dashboard')->with('error', 'Sesi ujian sudah berakhir.');
+        }
+        $this->syncGradeDeadline($grade);
         $grade->save();
 
         $questions = Question::where('exam_id', $examGroup->exam->id)
@@ -176,9 +178,7 @@ class ExaminationController extends Controller
         if ($duration->is_locked || $duration->end_time) {
             return redirect()->route('student.dashboard')->with('error', 'Ujian ini sudah dikunci atau selesai.');
         }
-        $duration->start_time ??= Carbon::now();
-        $duration->expires_at ??= Carbon::now()->addMilliseconds(max(0, (int) $duration->duration));
-        $duration->duration = $this->remainingDuration($duration);
+        $this->syncGradeDeadline($duration);
         $duration->save();
 
         return Inertia::render('Student/Exams/Show', [
@@ -254,6 +254,11 @@ class ExaminationController extends Controller
                 ? 'Ujian dikunci karena batas pelanggaran tercapai.'
                 : 'Ujian sudah selesai. Jawaban terakhir telah diproses.');
         }
+        if ($this->remainingDuration($grade) <= 0) {
+            $this->finalizeGrade($grade);
+
+            return redirect()->route('student.dashboard')->with('info', 'Waktu sesi ujian sudah berakhir. Jawaban telah diproses.');
+        }
         $question = Question::where('exam_id', $examGroup->exam_id)->findOrFail($request->integer('question_id'));
         $submitted = $request->input('answer_value', $request->input('answer'));
         $answer = Answer::where('exam_id', $examGroup->exam_id)
@@ -301,22 +306,7 @@ class ExaminationController extends Controller
             $this->persistAnswer($answer, $question, $request->input('answer_value', $request->input('answer')));
         }
 
-        $questions = Question::where('exam_id', $examGroup->exam_id)->get();
-        $answers = Answer::with('question')->where('exam_id', $examGroup->exam_id)
-            ->where('exam_session_id', $examGroup->exam_session_id)
-            ->where('student_id', $studentId)->get();
-        $correct = $answers->where('is_correct', 'Y');
-        $totalScore = (float) $questions->sum('max_score');
-        $earnedScore = (float) $answers->sum(fn ($answer) => (float) $answer->score > 0
-            ? (float) $answer->score
-            : ($answer->is_correct === 'Y' ? (float) ($answer->question?->max_score ?? 0) : 0));
-        $gradeValue = $totalScore > 0 ? round($earnedScore / $totalScore * 100, 2) : 0;
-
-        $grade->update([
-            'end_time' => Carbon::now(),
-            'total_correct' => $correct->count(),
-            'grade' => $gradeValue,
-        ]);
+        $this->finalizeGrade($grade);
 
         return redirect()->route('student.examination.resultExam', $request->exam_group_id);
     }
@@ -422,9 +412,55 @@ class ExaminationController extends Controller
 
     private function remainingDuration(Grade $grade): int
     {
-        if (!$grade->expires_at) return max(0, (int) $grade->duration);
+        $remaining = $grade->expires_at
+            ? max(0, (int) Carbon::now()->diffInMilliseconds($grade->expires_at, false))
+            : max(0, (int) $grade->duration);
+        $session = $grade->relationLoaded('exam_session') ? $grade->exam_session : $grade->exam_session;
 
-        return max(0, (int) Carbon::now()->diffInMilliseconds($grade->expires_at, false));
+        if ($session?->end_time) {
+            $sessionRemaining = max(0, (int) Carbon::now()->diffInMilliseconds($session->end_time, false));
+            $remaining = min($remaining, $sessionRemaining);
+        }
+
+        return $remaining;
+    }
+
+    private function syncGradeDeadline(Grade $grade): void
+    {
+        $now = Carbon::now();
+        $grade->start_time ??= $now;
+        $grade->expires_at ??= $now->copy()->addMilliseconds(max(0, (int) $grade->duration));
+
+        $session = $grade->relationLoaded('exam_session') ? $grade->exam_session : $grade->exam_session;
+        if ($session?->end_time) {
+            $sessionEnd = Carbon::parse($session->end_time);
+            if (Carbon::parse($grade->expires_at)->greaterThan($sessionEnd)) {
+                $grade->expires_at = $sessionEnd;
+            }
+        }
+
+        $grade->duration = $this->remainingDuration($grade);
+    }
+
+    private function finalizeGrade(Grade $grade): void
+    {
+        $questions = Question::where('exam_id', $grade->exam_id)->get();
+        $answers = Answer::with('question')
+            ->where('exam_id', $grade->exam_id)
+            ->where('exam_session_id', $grade->exam_session_id)
+            ->where('student_id', $grade->student_id)
+            ->get();
+        $correct = $answers->where('is_correct', 'Y');
+        $totalScore = (float) $questions->sum('max_score');
+        $earnedScore = (float) $answers->sum(fn ($answer) => (float) $answer->score > 0
+            ? (float) $answer->score
+            : ($answer->is_correct === 'Y' ? (float) ($answer->question?->max_score ?? 0) : 0));
+
+        $grade->update([
+            'end_time' => $grade->end_time ?? Carbon::now(),
+            'total_correct' => $correct->count(),
+            'grade' => $totalScore > 0 ? round($earnedScore / $totalScore * 100, 2) : 0,
+        ]);
     }
 
     private function isCorrect(Question $question, mixed $submitted): bool

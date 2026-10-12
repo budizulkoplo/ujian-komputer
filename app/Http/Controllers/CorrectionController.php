@@ -12,7 +12,7 @@ class CorrectionController extends Controller
 {
     public function index(Request $request)
     {
-        $exams = $this->accessibleExams()->with('lesson')->latest()->get();
+        $exams = $this->accessibleExams()->with('lesson', 'classroom')->latest()->get();
         $selectedExamId = $request->integer('exam_id') ?: null;
         $attempts = collect();
         $selectedAttempt = null;

@@ -1,5 +1,5 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
-import { IconDeviceFloppy, IconSettings } from '@tabler/icons-react';
+import { IconDeviceFloppy, IconDownload, IconSettings } from '@tabler/icons-react';
 import Button from '@/Components/Dashboard/Button';
 import Card from '@/Components/Dashboard/Card';
 import DashboardLayout from '@/Layouts/DashboardLayout';
@@ -47,6 +47,14 @@ export default function Index({ setting }) {
                     {errors.school_logo && <small className="text-xs text-red-500">{errors.school_logo}</small>}
                 </div>
             </Card>
+            <div className="mt-5">
+                <Card title="Backup Database" icon={<IconDownload size={20} strokeWidth={1.5} />}>
+                    <p className="text-sm leading-6 text-slate-600">Unduh salinan database aplikasi dalam format SQL. File backup hanya dibuat saat tombol ditekan dan tidak disimpan di folder publik.</p>
+                    <a href={route('settings.backup')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-800">
+                        <IconDownload size={18} strokeWidth={1.8} /> Download Backup Database
+                    </a>
+                </Card>
+            </div>
         </>
     );
 }
